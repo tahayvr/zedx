@@ -28,7 +28,7 @@
     "url": "https://github.com/tahayvr/zedx.git"
   },
   "homepage": "https://github.com/tahayvr/zedx#readme",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },
