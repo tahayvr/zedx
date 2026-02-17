@@ -8,8 +8,7 @@
     "zedx": "dist/index.js"
   },
   "files": [
-    "dist",
-    "src/templates"
+    "dist"
   ],
   "scripts": {
     "build": "tsc && cp -r src/templates dist/",
