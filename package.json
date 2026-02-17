@@ -7,6 +7,10 @@
 	"bin": {
 		"zedx": "dist/index.js"
 	},
+	"files": [
+		"dist",
+		"src/templates"
+	],
 	"scripts": {
 		"build": "tsc && cp -r src/templates dist/",
 		"start": "node dist/index.js",
@@ -19,7 +23,16 @@
 		"boilerplate",
 		"scaffold"
 	],
+	"author": "Taha Nejad <taha@noiserandom.com>",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/tahayvr/zedx.git"
+	},
+	"homepage": "https://github.com/tahayvr/zedx#readme",
 	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
 	"engines": {
 		"node": ">=18"
 	},
