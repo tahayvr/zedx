@@ -86,9 +86,12 @@ async function main() {
     const targetDir = path.join(getCallerDir(), options.id);
     await generateExtension(options, targetDir);
 
-    p.log.success(color.green("Extension created successfully!"));
+    // Final success message
+    p.outro(
+      `${color.green("✓")} ${color.bold("Extension created successfully!")}\n\n` +
+        `Location: ${color.yellow(targetDir)}\n`,
+    );
 
-    p.log.info(`Location: ${color.yellow(targetDir)}`);
     p.note(
       `Open Zed and install theme as dev extension: Extensions > Install Dev Extension`,
       "Next steps",
@@ -96,6 +99,7 @@ async function main() {
     p.outro(
       `More info: ${color.underline(color.yellow("https://zed.dev/docs/extensions/developing-extensions"))}`,
     );
+
     return;
   }
 

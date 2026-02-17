@@ -9,37 +9,42 @@ import type {
 export async function promptUser(): Promise<ExtensionOptions> {
   p.intro(color.bgBlue(" zedx "));
 
+  const nameDefault = "my-zed-extension";
   const name = await p.text({
     message: "Project name:",
-    placeholder: "my-zed-extension",
-    validate: (value: string | undefined) => {
-      if (!value || value.length === 0) return "Name is required";
-    },
+    placeholder: nameDefault,
   });
   if (p.isCancel(name)) {
     p.cancel("Cancelled.");
     process.exit(0);
   }
+  const nameValue = name || nameDefault;
 
+  const idDefault = nameValue.toLowerCase().replace(/\s+/g, "-");
   const id = await p.text({
     message: "Extension ID:",
-    placeholder: "my-zed-extension",
+    placeholder: idDefault,
     validate: (value: string | undefined) => {
-      if (!value || value.length === 0) return "ID is required";
+      if (value && value.includes(" ")) return "ID cannot contain spaces";
+      if (value && value !== value.toLowerCase()) return "ID must be lowercase";
     },
   });
   if (p.isCancel(id)) {
     p.cancel("Cancelled.");
     process.exit(0);
   }
+  const idValue = id || idDefault;
 
+  const descriptionDefault = "A Zed theme";
   const description = await p.text({
     message: "Description:",
+    placeholder: descriptionDefault,
   });
   if (p.isCancel(description)) {
     p.cancel("Cancelled.");
     process.exit(0);
   }
+  const descriptionValue = description || descriptionDefault;
 
   const author = await p.text({
     message: "Author name:",
@@ -52,14 +57,16 @@ export async function promptUser(): Promise<ExtensionOptions> {
     process.exit(0);
   }
 
+  const repositoryDefault = `https://github.com/${author ?? ""}/zed-theme.git`;
   const repository = await p.text({
     message: "GitHub repository URL:",
-    placeholder: "https://github.com/",
+    initialValue: repositoryDefault,
   });
   if (p.isCancel(repository)) {
     p.cancel("Cancelled.");
     process.exit(0);
   }
+  const repositoryValue = repository || repositoryDefault;
 
   const license = await p.select({
     message: "License:",
@@ -80,11 +87,11 @@ export async function promptUser(): Promise<ExtensionOptions> {
   }
 
   const options: ExtensionOptions = {
-    name: String(name),
-    id: String(id),
-    description: String(description),
+    name: nameValue,
+    id: idValue,
+    description: descriptionValue,
     author: String(author),
-    repository: String(repository),
+    repository: repositoryValue,
     license: license as License,
     types: ["theme"] as ExtensionType[],
   };
@@ -98,6 +105,7 @@ export async function promptThemeDetails(): Promise<{
 }> {
   const themeName = await p.text({
     message: "Theme name:",
+    placeholder: "My Theme",
   });
   if (p.isCancel(themeName)) {
     p.cancel("Cancelled.");
