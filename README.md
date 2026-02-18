@@ -6,6 +6,9 @@ Boilerplate generator for [Zed Editor](https://zed.dev/) extensions.
 
 ```bash
 npm install -g zedx
+
+# or
+brew install zedx
 ```
 
 ### Usage
