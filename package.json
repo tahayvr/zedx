@@ -1,53 +1,53 @@
 {
-  "name": "zedx",
-  "version": "0.1.1",
-  "description": "Boilerplate generator for Zed extensions",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "zedx": "dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc && cp -r src/templates dist/",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
-  },
-  "keywords": [
-    "zed",
-    "zed-editor",
-    "extension",
-    "boilerplate",
-    "scaffold"
-  ],
-  "author": "Taha Nejad <taha@noiserandom.com>",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/tahayvr/zedx.git"
-  },
-  "homepage": "https://github.com/tahayvr/zedx#readme",
-  "license": "Apache-2.0",
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "devDependencies": {
-    "@types/ejs": "^3.1.5",
-    "@types/fs-extra": "^11.0.4",
-    "@types/node": "^25.2.3",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@clack/prompts": "^0.10.1",
-    "commander": "^14.0.3",
-    "ejs": "^4.0.1",
-    "fs-extra": "^11.3.3",
-    "picocolors": "^1.1.1"
-  },
-  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
+	"name": "zedx",
+	"version": "0.1.1",
+	"description": "Boilerplate generator for Zed extensions",
+	"type": "module",
+	"main": "dist/index.js",
+	"bin": {
+		"zedx": "dist/index.js"
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc && cp -r src/templates dist/",
+		"start": "node dist/index.js",
+		"dev": "tsx src/index.ts"
+	},
+	"keywords": [
+		"zed",
+		"zed-editor",
+		"extension",
+		"boilerplate",
+		"scaffold"
+	],
+	"author": "Taha Nejad <taha@noiserandom.com>",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/tahayvr/zedx.git"
+	},
+	"homepage": "https://github.com/tahayvr/zedx#readme",
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"devDependencies": {
+		"@types/ejs": "^3.1.5",
+		"@types/fs-extra": "^11.0.4",
+		"@types/node": "^25.2.3",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"@clack/prompts": "^0.10.1",
+		"commander": "^14.0.3",
+		"ejs": "^4.0.1",
+		"fs-extra": "^11.3.3",
+		"picocolors": "^1.1.1"
+	},
+	"packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
 }
