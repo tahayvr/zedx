@@ -65,7 +65,7 @@ async function main() {
   program.name("zedx").description("Boilerplate generator for Zed extensions");
 
   program
-    .command("bump")
+    .command("version")
     .description("Bump the version of the extension")
     .argument("<type>", "Version bump type: major, minor, or patch")
     .action(async (type: string) => {

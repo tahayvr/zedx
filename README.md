@@ -16,9 +16,9 @@ zedx
 
 # Bump extension version
 # Run inside extension dir
-zedx bump patch   # 1.2.3 → 1.2.4
-zedx bump minor   # 1.2.3 → 1.3.0
-zedx bump major   # 1.2.3 → 2.0.0
+zedx version patch   # 1.2.3 → 1.2.4
+zedx version minor   # 1.2.3 → 1.3.0
+zedx version major   # 1.2.3 → 2.0.0
 ```
 
 ### Supported extension types:
