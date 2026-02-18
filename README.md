@@ -8,7 +8,7 @@ Boilerplate generator for [Zed Editor](https://zed.dev/) extensions.
 npm install -g zedx
 
 # or
-brew install zedx
+brew install tahayvr/tap/zedx
 ```
 
 ### Usage
@@ -26,6 +26,7 @@ zedx version major   # 1.2.3 → 2.0.0
 
 ### Supported extension types:
 
-1. Themes
+1. **Themes** - Color schemes for the editor
+2. **Languages** - Syntax highlighting, indentation, and optional LSP support
 
-   (more coming soon)
+You can choose to include theme, language, or both when creating an extension.

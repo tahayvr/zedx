@@ -1,0 +1,29 @@
+<%= languageName %>
+<%= "=".repeat(languageName.length) %>
+
+; name (required): The human readable name shown in the Select Language dropdown
+name = "<%= languageName %>"
+
+; grammar (required): The name of a Tree-sitter grammar (must match grammar registration in extension.toml)
+grammar = "<%= languageId %>"
+
+; path_suffixes: Array of file suffixes associated with this language (e.g., ["myl", "my"])
+; Unlike file_types in settings, this does not support glob patterns
+path_suffixes = <%- pathSuffixes.length > 0 ? JSON.stringify(pathSuffixes) : '[""]' %>
+
+; line_comments: Array of strings used to identify line comments
+; Used for editor::ToggleComments keybind (cmd-/ or ctrl-/)
+line_comments = <%- lineComments.length > 0 ? JSON.stringify(lineComments) : '[""]' %>
+
+; tab_size: The indentation/tab size used for this language (default is 4)
+; tab_size = 4
+
+; hard_tabs: Whether to indent with tabs (true) or spaces (false, the default)
+; hard_tabs = false
+
+; first_line_pattern: A regular expression to match files based on their first line
+; Useful for identifying files by shebang (e.g., "^#!.*\\bbash\\b" for shell scripts)
+; first_line_pattern = ""
+
+; debuggers: Array of debugger identifiers for ordering in the New Process Modal
+; debuggers = []
