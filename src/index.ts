@@ -60,7 +60,7 @@ async function bumpExtensionVersion(type: BumpType): Promise<void> {
 async function main() {
 	const program = new Command();
 
-	program.name('zedx').description('Boilerplate generator for Zed extensions');
+	program.name('zedx').description('Boilerplate generator for Zed Editor extensions.');
 
 	program
 		.command('version')

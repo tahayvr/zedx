@@ -1,6 +1,6 @@
 # zedx
 
-Boilerplate generator for Zed extensions.
+Boilerplate generator for [Zed Editor](https://zed.dev/) extensions.
 
 ## Installation
 
