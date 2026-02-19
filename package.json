@@ -1,6 +1,6 @@
 {
 	"name": "zedx",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Boilerplate generator for Zed Edittor extensions.",
 	"type": "module",
 	"main": "dist/index.js",
