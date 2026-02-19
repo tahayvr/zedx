@@ -1,0 +1,34 @@
+<%= name %>
+<%= "=".repeat(name.length) %>
+
+<%= description %>
+
+## Installation
+
+1. Open Zed
+2. Run `Extensions > Install Dev Extension`
+3. Select the folder for this extension
+
+## Development
+
+### Themes
+
+Edit `themes/<%= id %>.json` to customize colors. See [Zed Theme Documentation](https://zed.dev/docs/themes) for available tokens.
+
+### Languages
+
+Edit `languages/<%= languageId %>/config.toml`.
+
+#### Tree-sitter Grammar
+
+To add syntax highlighting, you'll need a Tree-sitter grammar:
+
+1. Find or create a grammar repo. Try [tree-sitter](https://github.com/tree-sitter/tree-sitter)
+2. Uncomment and fill in the `[grammars.<%= languageId %>]` section in `extension.toml`
+3. Edit the `.scm` files in `languages/<%= languageId %>/`
+
+See [Zed Documentation](https://zed.dev/docs/extensions/languages) for details.
+
+## Publishing
+
+Run `zedx version patch|minor|major` to bump the version, then create a GitHub release.
