@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 import color from 'picocolors';
-import type { ExtensionOptions, ExtensionType, License } from './types/index.js';
+import type { ExtensionOptions, ExtensionType, License, LanguageOptions } from './types/index.js';
 
 export async function promptUser(): Promise<ExtensionOptions> {
 	p.intro(
@@ -33,7 +33,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
 	}
 	const idValue = id || idDefault;
 
-	const descriptionDefault = 'A Zed theme';
+	const descriptionDefault = 'A Zed extension';
 	const description = await p.text({
 		message: 'Description:',
 		placeholder: descriptionDefault
@@ -56,7 +56,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
 		process.exit(0);
 	}
 
-	const repositoryDefault = `https://github.com/username/zed-theme.git`;
+	const repositoryDefault = `https://github.com/username/${idValue}.git`;
 	const repository = await p.text({
 		message: 'GitHub repository URL:',
 		initialValue: repositoryDefault
@@ -85,6 +85,19 @@ export async function promptUser(): Promise<ExtensionOptions> {
 		process.exit(0);
 	}
 
+	const extensionTypes = await p.multiselect({
+		message: 'What do you want to include in your extension?',
+		options: [
+			{ value: 'theme', label: 'Theme', hint: 'Color scheme for the editor' },
+			{ value: 'language', label: 'Language', hint: 'Syntax highlighting, indentation, etc.' }
+		],
+		required: true
+	});
+	if (p.isCancel(extensionTypes)) {
+		p.cancel('Cancelled.');
+		process.exit(0);
+	}
+
 	const options: ExtensionOptions = {
 		name: nameValue,
 		id: idValue,
@@ -92,7 +105,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
 		author: String(author),
 		repository: repositoryValue,
 		license: license as License,
-		types: ['theme'] as ExtensionType[]
+		types: extensionTypes as ExtensionType[]
 	};
 
 	return options;
@@ -129,4 +142,27 @@ export async function promptThemeDetails(): Promise<{
 		themeName: String(themeName),
 		appearance: appearance as 'light' | 'dark' | 'both'
 	};
+}
+
+export async function promptLanguageDetails(): Promise<Partial<LanguageOptions>> {
+	const languageName = await p.text({
+		message: 'Language name:',
+		placeholder: 'My Language'
+	});
+	if (p.isCancel(languageName)) {
+		p.cancel('Cancelled.');
+		process.exit(0);
+	}
+
+	const result: Partial<LanguageOptions> = {
+		languageName: String(languageName),
+		languageId: String(languageName).toLowerCase().replace(/\s+/g, '-'),
+		pathSuffixes: [],
+		lineComments: [],
+		grammarRepo: '',
+		grammarRev: '',
+		hasLsp: false
+	};
+
+	return result;
 }

@@ -1,4 +1,4 @@
-export type ExtensionType = 'theme';
+export type ExtensionType = 'theme' | 'language';
 
 export type License =
 	| 'Apache-2.0'
@@ -21,6 +21,19 @@ export interface ExtensionOptions {
 }
 
 export interface ThemeOptions extends ExtensionOptions {
-	themeName: string;
-	appearance: 'light' | 'dark' | 'both';
+  themeName: string;
+  appearance: 'light' | 'dark' | 'both';
+}
+
+export interface LanguageOptions extends ExtensionOptions {
+  languageName: string;
+  languageId: string;
+  pathSuffixes: string[];
+  lineComments: string[];
+  grammarRepo: string;
+  grammarRev: string;
+  hasLsp: boolean;
+  lspServerName?: string;
+  lspCommand?: string;
+  lspArgs?: string[];
 }

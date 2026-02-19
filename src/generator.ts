@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ejs from 'ejs';
-import type { ExtensionOptions } from './types/index.js';
+import type { ExtensionOptions, LanguageOptions } from './types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +36,13 @@ export async function generateExtension(
 	licenseContent = licenseContent.replaceAll('{{AUTHOR}}', options.author);
 	await fs.writeFile(path.join(targetDir, 'LICENSE'), licenseContent);
 
-	await generateTheme(options, targetDir);
+	if (options.types.includes('theme')) {
+		await generateTheme(options, targetDir);
+	}
+
+	if (options.types.includes('language')) {
+		await generateLanguage(options as LanguageOptions, targetDir);
+	}
 }
 
 async function generateTheme(options: ExtensionOptions, targetDir: string): Promise<void> {
@@ -57,4 +63,36 @@ async function generateTheme(options: ExtensionOptions, targetDir: string): Prom
 		themeData as Record<string, unknown>
 	);
 	await fs.writeFile(path.join(themeDir, `${options.id}.json`), themeJson);
+}
+
+async function generateLanguage(options: LanguageOptions, targetDir: string): Promise<void> {
+	const languageDir = path.join(targetDir, 'languages', options.languageId);
+	await fs.ensureDir(languageDir);
+
+	const configToml = await renderTemplate(
+		path.join(TEMPLATE_DIR, 'language/config.toml.ejs'),
+		options as unknown as Record<string, unknown>
+	);
+	await fs.writeFile(path.join(languageDir, 'config.toml'), configToml);
+
+	const queryFiles = [
+		'highlights.scm',
+		'brackets.scm',
+		'outline.scm',
+		'indents.scm',
+		'injections.scm',
+		'overrides.scm',
+		'textobjects.scm',
+		'redactions.scm',
+		'runnables.scm'
+	];
+
+	for (const file of queryFiles) {
+		const templatePath = path.join(TEMPLATE_DIR, 'language', file);
+		if (await fs.pathExists(templatePath)) {
+			let content = await fs.readFile(templatePath, 'utf-8');
+			content = ejs.render(content, options as unknown as Record<string, unknown>);
+			await fs.writeFile(path.join(languageDir, file), content);
+		}
+	}
 }

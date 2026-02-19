@@ -5,3 +5,16 @@ schema_version = 1
 authors = ["<%= author %>"]
 description = "<%= description %>"
 repository = "<%= repository %>"
+
+<% if (types.includes('language') && grammarRepo) { %>
+[grammars.<%= languageId %>]
+repository = "<%= grammarRepo %>"
+rev = "<%= grammarRev %>"
+<% } %>
+<% if (hasLsp && lspServerName) { %>
+[language_servers.<%= lspServerName %>]
+name = "<%= lspServerName %>"
+languages = ["<%= languageName %>"]
+
+[languages."<%= languageName %>"]
+<% } %>

@@ -5,7 +5,7 @@ import * as p from '@clack/prompts';
 import color from 'picocolors';
 import { Command } from 'commander';
 import fs from 'fs-extra';
-import { promptUser, promptThemeDetails } from './prompts.js';
+import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { generateExtension } from './generator.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
@@ -75,11 +75,17 @@ async function main() {
 		});
 
 	if (process.argv.length <= 2) {
-		// No command provided, run interactive mode
 		const options = await promptUser();
 
-		const themeDetails = await promptThemeDetails();
-		Object.assign(options, themeDetails);
+		if (options.types.includes('theme')) {
+			const themeDetails = await promptThemeDetails();
+			Object.assign(options, themeDetails);
+		}
+
+		if (options.types.includes('language')) {
+			const languageDetails = await promptLanguageDetails();
+			Object.assign(options, languageDetails);
+		}
 
 		const targetDir = path.join(getCallerDir(), options.id);
 		await generateExtension(options, targetDir);
