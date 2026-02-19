@@ -156,12 +156,7 @@ export async function promptLanguageDetails(): Promise<Partial<LanguageOptions>>
 
 	const result: Partial<LanguageOptions> = {
 		languageName: String(languageName),
-		languageId: String(languageName).toLowerCase().replace(/\s+/g, '-'),
-		pathSuffixes: [],
-		lineComments: [],
-		grammarRepo: '',
-		grammarRev: '',
-		hasLsp: false
+		languageId: String(languageName).toLowerCase().replace(/\s+/g, '-')
 	};
 
 	return result;

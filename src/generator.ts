@@ -24,11 +24,28 @@ export async function generateExtension(
 ): Promise<void> {
 	await fs.ensureDir(targetDir);
 
+	const extData = {
+		...options,
+		grammarRepo: options.grammarRepo || '',
+		grammarRev: options.grammarRev || '',
+		hasLsp: options.hasLsp || false
+	};
+
 	const extToml = await renderTemplate(
 		path.join(TEMPLATE_DIR, 'base/extension.toml.ejs'),
-		options as unknown as Record<string, unknown>
+		extData as unknown as Record<string, unknown>
 	);
 	await fs.writeFile(path.join(targetDir, 'extension.toml'), extToml);
+
+	const readmeData = {
+		...extData,
+		languageId: (options as LanguageOptions).languageId || 'my-language'
+	};
+	const readme = await renderTemplate(
+		path.join(TEMPLATE_DIR, 'base/readme.md.ejs'),
+		readmeData as unknown as Record<string, unknown>
+	);
+	await fs.writeFile(path.join(targetDir, 'README.md'), readme);
 
 	const licensePath = path.join(TEMPLATE_DIR, 'base/licenses', options.license);
 	let licenseContent = await fs.readFile(licensePath, 'utf-8');
@@ -69,9 +86,15 @@ async function generateLanguage(options: LanguageOptions, targetDir: string): Pr
 	const languageDir = path.join(targetDir, 'languages', options.languageId);
 	await fs.ensureDir(languageDir);
 
+	const data = {
+		...options,
+		pathSuffixes: options.pathSuffixes || [],
+		lineComments: options.lineComments || ['//', '#']
+	};
+
 	const configToml = await renderTemplate(
 		path.join(TEMPLATE_DIR, 'language/config.toml.ejs'),
-		options as unknown as Record<string, unknown>
+		data as unknown as Record<string, unknown>
 	);
 	await fs.writeFile(path.join(languageDir, 'config.toml'), configToml);
 
@@ -91,7 +114,7 @@ async function generateLanguage(options: LanguageOptions, targetDir: string): Pr
 		const templatePath = path.join(TEMPLATE_DIR, 'language', file);
 		if (await fs.pathExists(templatePath)) {
 			let content = await fs.readFile(templatePath, 'utf-8');
-			content = ejs.render(content, options as unknown as Record<string, unknown>);
+			content = ejs.render(content, data as unknown as Record<string, unknown>);
 			await fs.writeFile(path.join(languageDir, file), content);
 		}
 	}

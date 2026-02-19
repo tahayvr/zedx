@@ -28,11 +28,11 @@ export interface ThemeOptions extends ExtensionOptions {
 export interface LanguageOptions extends ExtensionOptions {
   languageName: string;
   languageId: string;
-  pathSuffixes: string[];
-  lineComments: string[];
-  grammarRepo: string;
-  grammarRev: string;
-  hasLsp: boolean;
+  pathSuffixes?: string[];
+  lineComments?: string[];
+  grammarRepo?: string;
+  grammarRev?: string;
+  hasLsp?: boolean;
   lspServerName?: string;
   lspCommand?: string;
   lspArgs?: string[];

@@ -9,12 +9,12 @@ repository = "<%= repository %>"
 <% if (types.includes('language') && grammarRepo) { %>
 [grammars.<%= languageId %>]
 repository = "<%= grammarRepo %>"
-rev = "<%= grammarRev %>"
+rev = "<%= grammarRev || 'main' %>"
+<% } else if (types.includes('language')) { %>
+# [grammars.<%= languageId %>]
+# repository = "https://github.com/user/tree-sitter-<%= languageId %>"
+# rev = "main"
 <% } %>
 <% if (hasLsp && lspServerName) { %>
-[language_servers.<%= lspServerName %>]
-name = "<%= lspServerName %>"
-languages = ["<%= languageName %>"]
-
-[languages."<%= languageName %>"]
+[languages.<%= languageId %>.language_servers.<%= lspServerName %>]
 <% } %>
