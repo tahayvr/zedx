@@ -6,11 +6,11 @@ grammar = "<%= languageId %>"
 
 # path_suffixes: Array of file suffixes associated with this language (e.g., ["myl", "my"])
 # Unlike file_types in settings, this does not support glob patterns
-path_suffixes = <%- pathSuffixes.length > 0 ? JSON.stringify(pathSuffixes) : '[""]' %>
+# path_suffixes = []
 
 # line_comments: Array of strings used to identify line comments
 # Used for editor::ToggleComments keybind (cmd-/ or ctrl-/)
-line_comments = <%- lineComments.length > 0 ? JSON.stringify(lineComments) : '[""]' %>
+# line_comments = ["// ", "# "]
 
 # tab_size: The indentation/tab size used for this language (default is 4)
 # tab_size = 4

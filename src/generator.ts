@@ -26,9 +26,9 @@ export async function generateExtension(
 
 	const extData = {
 		...options,
-		grammarRepo: options.grammarRepo || '',
-		grammarRev: options.grammarRev || '',
-		hasLsp: options.hasLsp || false
+		grammarRepo: (options as LanguageOptions).grammarRepo || '',
+		grammarRev: (options as LanguageOptions).grammarRev || '',
+		languageName: (options as LanguageOptions).languageName || 'My Language'
 	};
 
 	const extToml = await renderTemplate(

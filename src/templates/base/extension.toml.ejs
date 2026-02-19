@@ -15,6 +15,9 @@ rev = "<%= grammarRev || 'main' %>"
 # repository = "https://github.com/user/tree-sitter-<%= languageId %>"
 # rev = "main"
 <% } %>
-<% if (hasLsp && lspServerName) { %>
-[languages.<%= languageId %>.language_servers.<%= lspServerName %>]
+
+<% if (types.includes('language')) { %>
+# [language_servers.my-lsp]
+# name = "My Language LSP"
+# languages = ["<%= languageName %>"]
 <% } %>
