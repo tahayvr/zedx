@@ -2,5 +2,19 @@ node_modules/
 dist/
 .DS_Store
 pnpm-workspace.yaml
-
 *.tgz
+*
+
+# Include
+!src/
+!src/**
+
+!assets
+!assets/**
+
+!LICENSE
+
+!package.json
+!pnpm-lock.yaml
+!README.md
+!tsconfig.json
