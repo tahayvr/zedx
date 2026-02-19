@@ -2,6 +2,8 @@
 
 Boilerplate generator for [Zed Editor](https://zed.dev/) extensions.
 
+![screenshot](./assets/screenshot1.png)
+
 ## Installation
 
 ```bash
