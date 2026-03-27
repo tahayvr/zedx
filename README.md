@@ -19,8 +19,14 @@ brew install tahayvr/tap/zedx
 # Create a new extension
 zedx
 
+# Add a theme or language to an existing extension
+zedx add theme "Midnight Blue"
+zedx add language rust
+
+# Validate extension config and show what is missing or incomplete
+zedx check
+
 # Bump extension version
-# Run inside extension dir
 zedx version patch   # 1.2.3 → 1.2.4
 zedx version minor   # 1.2.3 → 1.3.0
 zedx version major   # 1.2.3 → 2.0.0
