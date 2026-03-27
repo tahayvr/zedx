@@ -19,3 +19,5 @@ pnpm-workspace.yaml
 !README.md
 !tsconfig.json
 !.gitignore
+
+!justfile
