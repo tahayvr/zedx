@@ -18,6 +18,7 @@ pnpm-workspace.yaml
 !pnpm-lock.yaml
 !README.md
 !tsconfig.json
+!.oxfmtrc.json
 !.gitignore
 
 !justfile
