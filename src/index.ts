@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import fs from 'fs-extra';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { generateExtension } from './generator.js';
+import { runCheck } from './check.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
 
@@ -72,6 +73,13 @@ async function main() {
 				process.exit(1);
 			}
 			await bumpExtensionVersion(type as BumpType);
+		});
+
+	program
+		.command('check')
+		.description('Validate extension config and show what is missing or incomplete')
+		.action(async () => {
+			await runCheck(getCallerDir());
 		});
 
 	if (process.argv.length <= 2) {
