@@ -34,6 +34,8 @@ zedx version major   # 1.2.3 → 2.0.0
 # Sync Zed settings and extensions via a GitHub repo
 zedx sync init       # Link a GitHub repo as the sync target (run once)
 zedx sync            # Sync local and remote config automatically
+zedx sync install    # Install an OS daemon to auto-sync when Zed config changes
+zedx sync uninstall  # Remove the OS daemon
 ```
 
 ### Supported extension types:

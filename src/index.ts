@@ -10,6 +10,7 @@ import { generateExtension } from './generator.js';
 import { runCheck } from './check.js';
 import { addTheme, addLanguage } from './add.js'
 import { syncInit, runSync } from './sync.js';
+import { syncInstall, syncUninstall } from './daemon.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
 
@@ -114,6 +115,20 @@ async function main() {
 		.description('Link a GitHub repo as the sync target')
 		.action(async () => {
 			await syncInit()
+		})
+
+	syncCmd
+		.command('install')
+		.description('Install the OS daemon to auto-sync when Zed config changes')
+		.action(async () => {
+			await syncInstall()
+		})
+
+	syncCmd
+		.command('uninstall')
+		.description('Remove the OS daemon')
+		.action(async () => {
+			await syncUninstall()
 		})
 
 	if (process.argv.length <= 2) {

@@ -52,12 +52,13 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 async function applyRemoteSettings(
 	repoSettings: string,
 	repoExtensions: string,
-	localSettingsPath: string
+	localSettingsPath: string,
+	silent = false
 ): Promise<void> {
 	// Backup existing settings
 	if (await fs.pathExists(localSettingsPath)) {
 		await fs.copy(localSettingsPath, localSettingsPath + '.bak', { overwrite: true });
-		p.log.info(`Backed up settings to ${color.dim(localSettingsPath + '.bak')}`);
+		if (!silent) p.log.info(`Backed up settings to ${color.dim(localSettingsPath + '.bak')}`);
 	}
 
 	let settingsJson = await fs.readFile(repoSettings, 'utf-8');
@@ -79,7 +80,8 @@ async function applyRemoteSettings(
 				try {
 					settingsObj = JSON.parse(stripped);
 				} catch {
-					p.log.warn(color.yellow('Could not parse settings.json — skipping extension merge.'));
+					if (!silent)
+						p.log.warn(color.yellow('Could not parse settings.json — skipping extension merge.'));
 				}
 
 				const autoInstall: Record<string, boolean> = {};
@@ -90,7 +92,10 @@ async function applyRemoteSettings(
 				settingsJson = JSON.stringify(settingsObj, null, 4);
 			}
 		} catch {
-			p.log.warn(color.yellow('Could not parse extensions/index.json — skipping extension merge.'));
+			if (!silent)
+				p.log.warn(
+					color.yellow('Could not parse extensions/index.json — skipping extension merge.')
+				);
 		}
 	}
 
@@ -156,27 +161,49 @@ export async function syncInit(): Promise<void> {
 }
 
 // zedx sync
-export async function runSync(): Promise<void> {
-	p.intro(color.bold('zedx sync'));
+export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
+	const { silent = false } = opts;
+
+	// In silent mode (daemon/watch), route all UI through plain console.log
+	// Interactive conflict prompts fall back to "local wins".
+	const log = {
+		info: (msg: string) => {
+			if (!silent) p.log.info(msg);
+		},
+		warn: (msg: string) => {
+			if (!silent) p.log.warn(msg);
+			else console.error(`[zedx] warn: ${msg}`);
+		},
+		success: (msg: string) => {
+			if (!silent) p.log.success(msg);
+		}
+	};
+
+	if (!silent) p.intro(color.bold('zedx sync'));
 
 	const config = await requireSyncConfig();
 	const zedPaths = resolveZedPaths();
 
-	const spinner = p.spinner();
+	// Spinner shim: in silent mode just log to stderr so daemons can capture it
+	const spinner = silent
+		? {
+				start: (m: string) => console.error(`[zedx] ${m}`),
+				stop: (m: string) => console.error(`[zedx] ${m}`)
+			}
+		: p.spinner();
 
 	await withTempDir(async (tmp) => {
 		// 1. Clone the remote repo
 		const git = simpleGit(tmp);
 		let remoteExists = true;
 
-		spinner.start(`Fetching ${color.cyan(config.syncRepo)}...`);
+		spinner.start(`Fetching ${config.syncRepo}...`);
 		try {
 			await git.clone(config.syncRepo, tmp, ['--depth', '1', '--branch', config.branch]);
 			spinner.stop('Remote fetched.');
 		} catch {
-			// Repo is empty or branch doesn't exist yet — we'll push fresh
 			remoteExists = false;
-			spinner.stop(color.yellow('Remote is empty or branch not found — will push fresh.'));
+			spinner.stop('Remote is empty or branch not found — will push fresh.');
 			await git.init();
 			await git.addRemote('origin', config.syncRepo);
 		}
@@ -184,11 +211,7 @@ export async function runSync(): Promise<void> {
 		// 2. Determine what changed for each file
 		const lastSync = config.lastSync ? new Date(config.lastSync) : null;
 
-		const files: Array<{
-			repoPath: string;
-			localPath: string;
-			label: string;
-		}> = [
+		const files: Array<{ repoPath: string; localPath: string; label: string }> = [
 			{
 				repoPath: path.join(tmp, 'settings.json'),
 				localPath: zedPaths.settings,
@@ -209,13 +232,13 @@ export async function runSync(): Promise<void> {
 
 			// Both missing — skip
 			if (!localExists && !remoteFileExists) {
-				p.log.warn(color.yellow(`${file.label}: not found locally or remotely — skipping.`));
+				log.warn(`${file.label}: not found locally or remotely — skipping.`);
 				continue;
 			}
 
 			// Remote doesn't have it yet — push local
 			if (localExists && !remoteFileExists) {
-				p.log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
+				log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
 				await fs.ensureDir(path.dirname(file.repoPath));
 				await fs.copy(file.localPath, file.repoPath, { overwrite: true });
 				anyChanges = true;
@@ -224,12 +247,13 @@ export async function runSync(): Promise<void> {
 
 			// Local doesn't have it — pull remote
 			if (!localExists && remoteFileExists) {
-				p.log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
+				log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
 				if (file.label === 'settings.json') {
 					await applyRemoteSettings(
 						file.repoPath,
 						path.join(tmp, 'extensions', 'index.json'),
-						file.localPath
+						file.localPath,
+						silent
 					);
 				} else {
 					await fs.ensureDir(path.dirname(file.localPath));
@@ -243,7 +267,7 @@ export async function runSync(): Promise<void> {
 			const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
 
 			if (localContent === remoteContent) {
-				p.log.success(`${file.label}: ${color.dim('already in sync')}`);
+				log.success(`${file.label}: ${color.dim('already in sync')}`);
 				continue;
 			}
 
@@ -256,64 +280,74 @@ export async function runSync(): Promise<void> {
 
 			if (localChanged && !remoteChanged) {
 				// Only local changed → push
-				p.log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
+				log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
 				await fs.ensureDir(path.dirname(file.repoPath));
 				await fs.copy(file.localPath, file.repoPath, { overwrite: true });
 				anyChanges = true;
 			} else if (remoteChanged && !localChanged) {
 				// Only remote changed → pull
-				p.log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
+				log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
 				if (file.label === 'settings.json') {
 					await applyRemoteSettings(
 						file.repoPath,
 						path.join(tmp, 'extensions', 'index.json'),
-						file.localPath
+						file.localPath,
+						silent
 					);
 				} else {
 					await fs.ensureDir(path.dirname(file.localPath));
 					await fs.copy(file.repoPath, file.localPath, { overwrite: true });
 				}
 			} else {
-				// Both changed — ask the user
-				p.log.warn(color.yellow(`${file.label}: both local and remote changed.`));
-
-				const choice = await p.select({
-					message: `Which version of ${color.bold(file.label)} should win?`,
-					options: [
-						{
-							value: 'local',
-							label: 'Keep local',
-							hint: `modified ${localMtime.toLocaleString()}`
-						},
-						{
-							value: 'remote',
-							label: 'Use remote',
-							hint: `modified ${remoteMtime.toLocaleString()}`
-						}
-					]
-				});
-
-				if (p.isCancel(choice)) {
-					p.cancel('Cancelled.');
-					process.exit(0);
-				}
-
-				if (choice === 'local') {
-					p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
+				// Both changed
+				if (silent) {
+					// Daemon can't prompt — local wins, will be pushed
+					log.warn(`${file.label}: conflict detected in unattended mode — keeping local.`);
 					await fs.ensureDir(path.dirname(file.repoPath));
 					await fs.copy(file.localPath, file.repoPath, { overwrite: true });
 					anyChanges = true;
 				} else {
-					p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
-					if (file.label === 'settings.json') {
-						await applyRemoteSettings(
-							file.repoPath,
-							path.join(tmp, 'extensions', 'index.json'),
-							file.localPath
-						);
+					p.log.warn(color.yellow(`${file.label}: both local and remote changed.`));
+
+					const choice = await p.select({
+						message: `Which version of ${color.bold(file.label)} should win?`,
+						options: [
+							{
+								value: 'local',
+								label: 'Keep local',
+								hint: `modified ${localMtime.toLocaleString()}`
+							},
+							{
+								value: 'remote',
+								label: 'Use remote',
+								hint: `modified ${remoteMtime.toLocaleString()}`
+							}
+						]
+					});
+
+					if (p.isCancel(choice)) {
+						p.cancel('Cancelled.');
+						process.exit(0);
+					}
+
+					if (choice === 'local') {
+						p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
+						await fs.ensureDir(path.dirname(file.repoPath));
+						await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+						anyChanges = true;
 					} else {
-						await fs.ensureDir(path.dirname(file.localPath));
-						await fs.copy(file.repoPath, file.localPath, { overwrite: true });
+						p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
+						if (file.label === 'settings.json') {
+							await applyRemoteSettings(
+								file.repoPath,
+								path.join(tmp, 'extensions', 'index.json'),
+								file.localPath,
+								silent
+							);
+						} else {
+							await fs.ensureDir(path.dirname(file.localPath));
+							await fs.copy(file.repoPath, file.localPath, { overwrite: true });
+						}
 					}
 				}
 			}
@@ -335,7 +369,7 @@ export async function runSync(): Promise<void> {
 				}
 				spinner.stop('Pushed.');
 			} else {
-				spinner.stop(color.dim('Nothing staged to push.'));
+				spinner.stop('Nothing staged to push.');
 			}
 		}
 	});
@@ -343,5 +377,5 @@ export async function runSync(): Promise<void> {
 	// 4. Save last sync timestamp
 	await writeSyncConfig({ ...config, lastSync: new Date().toISOString() });
 
-	p.outro(`${color.green('✓')} Sync complete.`);
+	if (!silent) p.outro(`${color.green('✓')} Sync complete.`);
 }
