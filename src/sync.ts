@@ -103,6 +103,99 @@ async function applyRemoteSettings(
 	await fs.writeFile(localSettingsPath, settingsJson, 'utf-8');
 }
 
+// zedx sync status
+export async function syncStatus(): Promise<void> {
+	p.intro(color.bold('zedx sync status'));
+
+	const config = await requireSyncConfig();
+	const zedPaths = resolveZedPaths();
+
+	p.log.info(`Repo:   ${color.dim(config.syncRepo)} ${color.dim(`(${config.branch})`)}`);
+	if (config.lastSync) {
+		p.log.info(`Last sync: ${color.dim(new Date(config.lastSync).toLocaleString())}`);
+	} else {
+		p.log.info(`Last sync: ${color.dim('never')}`);
+	}
+
+	const spinner = p.spinner();
+
+	await withTempDir(async (tmp) => {
+		spinner.start(`Fetching ${config.syncRepo}...`);
+		let remoteExists = true;
+		try {
+			const git = simpleGit(tmp);
+			await git.clone(config.syncRepo, tmp, ['--depth', '1', '--branch', config.branch]);
+			spinner.stop('Remote fetched.');
+		} catch {
+			remoteExists = false;
+			spinner.stop(color.yellow('Remote is empty or branch not found.'));
+		}
+
+		const files: Array<{ repoPath: string; localPath: string; label: string }> = [
+			{
+				repoPath: path.join(tmp, 'settings.json'),
+				localPath: zedPaths.settings,
+				label: 'settings.json'
+			},
+			{
+				repoPath: path.join(tmp, 'extensions', 'index.json'),
+				localPath: zedPaths.extensions,
+				label: 'extensions/index.json'
+			}
+		];
+
+		for (const file of files) {
+			const localExists = await fs.pathExists(file.localPath);
+			const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
+
+			if (!localExists && !remoteFileExists) {
+				p.log.warn(`${color.bold(file.label)}: not found locally or remotely`);
+				continue;
+			}
+
+			if (localExists && !remoteFileExists) {
+				p.log.warn(`${color.bold(file.label)}: ${color.green('local only')} — not pushed yet`);
+				continue;
+			}
+
+			if (!localExists && remoteFileExists) {
+				p.log.warn(`${color.bold(file.label)}: ${color.cyan('remote only')} — not pulled yet`);
+				continue;
+			}
+
+			const localContent = await fs.readFile(file.localPath, 'utf-8');
+			const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
+
+			if (localContent === remoteContent) {
+				p.log.success(`${color.bold(file.label)}: in sync`);
+				continue;
+			}
+
+			const localMtime = (await fs.stat(file.localPath)).mtime;
+			const remoteMtime = (await fs.stat(file.repoPath)).mtime;
+			const lastSync = config.lastSync ? new Date(config.lastSync) : null;
+			const localChanged = !lastSync || localMtime > lastSync;
+			const remoteChanged = !lastSync || remoteMtime > lastSync;
+
+			if (localChanged && !remoteChanged) {
+				p.log.warn(
+					`${color.bold(file.label)}: ${color.green('local ahead')} — modified ${color.dim(localMtime.toLocaleString())}`
+				);
+			} else if (remoteChanged && !localChanged) {
+				p.log.warn(
+					`${color.bold(file.label)}: ${color.cyan('remote ahead')} — modified ${color.dim(remoteMtime.toLocaleString())}`
+				);
+			} else {
+				p.log.warn(
+					`${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`
+				);
+			}
+		}
+	});
+
+	p.outro(`Run ${color.cyan('zedx sync')} to resolve.`);
+}
+
 // zedx sync init
 export async function syncInit(): Promise<void> {
 	p.intro(color.bold('zedx sync init'));

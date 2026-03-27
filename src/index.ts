@@ -9,7 +9,7 @@ import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts
 import { generateExtension } from './generator.js';
 import { runCheck } from './check.js';
 import { addTheme, addLanguage } from './add.js'
-import { syncInit, runSync } from './sync.js';
+import { syncInit, runSync, syncStatus } from './sync.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
@@ -115,6 +115,13 @@ async function main() {
 		.description('Link a GitHub repo as the sync target')
 		.action(async () => {
 			await syncInit()
+		})
+
+	syncCmd
+		.command('status')
+		.description('Show sync state between local Zed config and the remote repo')
+		.action(async () => {
+			await syncStatus()
 		})
 
 	syncCmd

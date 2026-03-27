@@ -24,10 +24,6 @@ function tomlHasUncommentedKey(content: string, key: string): boolean {
     return new RegExp(`^${key}\\s*=`, 'm').test(content)
 }
 
-function tomlHasSection(content: string, section: string): boolean {
-    // Looks for an uncommented [section] or [section.something] header
-    return new RegExp(`^\\[${section.replace('.', '\\.')}`, 'm').test(content)
-}
 
 export async function runCheck(callerDir: string): Promise<void> {
     p.intro(`${color.bgBlue(color.bold(' zedx check '))} ${color.blue('Validating extension config…')}`)
