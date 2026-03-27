@@ -8,6 +8,7 @@ import fs from 'fs-extra';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { generateExtension } from './generator.js';
 import { runCheck } from './check.js';
+import { addTheme, addLanguage } from './add.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
 
@@ -80,6 +81,24 @@ async function main() {
 		.description('Validate extension config and show what is missing or incomplete')
 		.action(async () => {
 			await runCheck(getCallerDir());
+		});
+
+	const addCmd = program
+		.command('add')
+		.description('Add a theme or language to an existing extension');
+
+	addCmd
+		.command('theme <name>')
+		.description('Add a new theme to the extension')
+		.action(async (name: string) => {
+			await addTheme(getCallerDir(), name);
+		});
+
+	addCmd
+		.command('language <id>')
+		.description('Add a new language to the extension')
+		.action(async (id: string) => {
+			await addLanguage(getCallerDir(), id);
 		});
 
 	if (process.argv.length <= 2) {
