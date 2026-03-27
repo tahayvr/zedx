@@ -1,5 +1,6 @@
 alias b := build
 alias v := version
+alias c := check
 
 pack:
     pnpm pack
@@ -23,3 +24,7 @@ brew:
     sed -i '' "s|url '[^']*'|url 'https://registry.npmjs.org/zedx/-/zedx-$VERSION.tgz'|" zedx.rb && \
     sed -i '' "s/sha256 '[^']*'/sha256 '$SHA'/" zedx.rb && \
     echo "Updated zedx.rb to version $VERSION ($SHA)"
+
+check:
+    pnpm lint
+    pnpm fmt
