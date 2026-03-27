@@ -1,6 +1,6 @@
 # zedx
 
-Boilerplate generator for [Zed Editor](https://zed.dev/) extensions.
+Scaffold [Zed Editor](https://zed.dev/) extensions and sync your settings across machines.
 
 ![screenshot](./assets/screenshot1.png)
 
@@ -30,6 +30,10 @@ zedx check
 zedx version patch   # 1.2.3 → 1.2.4
 zedx version minor   # 1.2.3 → 1.3.0
 zedx version major   # 1.2.3 → 2.0.0
+
+# Sync Zed settings and extensions via a GitHub repo
+zedx sync init       # Link a GitHub repo as the sync target (run once)
+zedx sync            # Sync local and remote config automatically
 ```
 
 ### Supported extension types:

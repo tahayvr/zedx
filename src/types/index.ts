@@ -1,5 +1,15 @@
 export type ExtensionType = 'theme' | 'language';
 
+export interface ZedPaths {
+    settings: string
+    extensions: string
+}
+
+export interface SyncConfig {
+    syncRepo: string
+    branch: string
+}
+
 export type License =
 	| 'Apache-2.0'
 	| 'BSD-2-Clause'
