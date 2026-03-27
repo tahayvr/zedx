@@ -1,5 +1,16 @@
 {
-	"$schema": "./node_modules/oxfmt/configuration_schema.json",
-	"ignorePatterns": [],
-	"singleQuote": true
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "printWidth": 100,
+    "tabWidth": 4,
+    "singleQuote": true,
+    "jsxSingleQuote": false,
+    "trailingComma": "all",
+    "bracketSpacing": true,
+    "arrowParens": "avoid",
+    "endOfLine": "lf",
+    "insertFinalNewline": true,
+    "ignorePatterns": [],
+    "sortImports": {},
+    "sortPackageJson": true,
+    "jsdoc": {}
 }
