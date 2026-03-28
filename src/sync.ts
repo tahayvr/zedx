@@ -469,7 +469,7 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
                     }
                     anyChanges = true;
                 } else {
-                    p.log.warn(color.yellow(`${file.label}: both local and remote changed.`));
+                    p.log.warn(color.yellow(`conflict between local and remote ${file.label}`));
 
                     const choice = await p.select({
                         message: `Which version of ${color.bold(file.label)} should win?`,
