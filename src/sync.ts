@@ -52,6 +52,29 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     }
 }
 
+// Prepare settings.json for pushing to the repo by stripping auto_install_extensions.
+// That field is derived from extensions/index.json on pull, so storing it in the
+// remote would create stale/conflicting data across machines.
+async function prepareSettingsForPush(
+    localSettingsPath: string,
+    repoSettingsPath: string,
+): Promise<void> {
+    const raw = await fs.readFile(localSettingsPath, 'utf-8');
+    const stripped = raw.replace(/\/\/[^\n]*/g, '');
+    let settingsObj: Record<string, unknown> = {};
+    try {
+        settingsObj = JSON.parse(stripped);
+    } catch {
+        // If we can't parse it (e.g. complex comments), push as-is
+        await fs.ensureDir(path.dirname(repoSettingsPath));
+        await fs.copy(localSettingsPath, repoSettingsPath, { overwrite: true });
+        return;
+    }
+    delete settingsObj['auto_install_extensions'];
+    await fs.ensureDir(path.dirname(repoSettingsPath));
+    await fs.writeFile(repoSettingsPath, JSON.stringify(settingsObj, null, 4), 'utf-8');
+}
+
 // Extension merge helper
 async function applyRemoteSettings(
     repoSettings: string,
@@ -92,12 +115,28 @@ async function applyRemoteSettings(
                         );
                 }
 
-                const autoInstall: Record<string, boolean> = {};
+                // Preserve any existing entries (e.g. false entries for "never install"),
+                // then add true for every extension recorded in index.json.
+                const existing =
+                    typeof settingsObj['auto_install_extensions'] === 'object' &&
+                    settingsObj['auto_install_extensions'] !== null
+                        ? (settingsObj['auto_install_extensions'] as Record<string, boolean>)
+                        : {};
+
+                const autoInstall: Record<string, boolean> = { ...existing };
                 for (const id of extensionIds) {
-                    autoInstall[id] = true;
+                    // Only set to true if there is no explicit user preference already
+                    if (!(id in autoInstall)) {
+                        autoInstall[id] = true;
+                    }
                 }
                 settingsObj['auto_install_extensions'] = autoInstall;
                 settingsJson = JSON.stringify(settingsObj, null, 4);
+
+                if (!silent)
+                    p.log.info(
+                        `Injected ${color.cyan(String(extensionIds.length))} extension(s) into ${color.dim('auto_install_extensions')}`,
+                    );
             }
         } catch {
             if (!silent)
@@ -346,8 +385,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
             // Remote doesn't have it yet — push local
             if (localExists && !remoteFileExists) {
                 log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
-                await fs.ensureDir(path.dirname(file.repoPath));
-                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                if (file.label === 'settings.json') {
+                    await prepareSettingsForPush(file.localPath, file.repoPath);
+                } else {
+                    await fs.ensureDir(path.dirname(file.repoPath));
+                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                }
                 anyChanges = true;
                 continue;
             }
@@ -390,8 +433,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
             if (localChanged && !remoteChanged) {
                 // Only local changed → push
                 log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
-                await fs.ensureDir(path.dirname(file.repoPath));
-                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                if (file.label === 'settings.json') {
+                    await prepareSettingsForPush(file.localPath, file.repoPath);
+                } else {
+                    await fs.ensureDir(path.dirname(file.repoPath));
+                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                }
                 anyChanges = true;
             } else if (remoteChanged && !localChanged) {
                 // Only remote changed → pull
@@ -414,8 +461,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
                     log.warn(
                         `${file.label}: conflict detected in unattended mode — keeping local.`,
                     );
-                    await fs.ensureDir(path.dirname(file.repoPath));
-                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                    if (file.label === 'settings.json') {
+                        await prepareSettingsForPush(file.localPath, file.repoPath);
+                    } else {
+                        await fs.ensureDir(path.dirname(file.repoPath));
+                        await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                    }
                     anyChanges = true;
                 } else {
                     p.log.warn(color.yellow(`${file.label}: both local and remote changed.`));
@@ -443,8 +494,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
 
                     if (choice === 'local') {
                         p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                        await fs.ensureDir(path.dirname(file.repoPath));
-                        await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                        if (file.label === 'settings.json') {
+                            await prepareSettingsForPush(file.localPath, file.repoPath);
+                        } else {
+                            await fs.ensureDir(path.dirname(file.repoPath));
+                            await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                        }
                         anyChanges = true;
                     } else {
                         p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
