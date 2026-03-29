@@ -11,6 +11,7 @@ import { addTheme, addLanguage } from './add.js';
 import { runCheck } from './check.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
+import { installDevExtension } from './install.js';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus } from './sync.js';
@@ -83,6 +84,7 @@ function printWelcome(): void {
         ['zedx add language <id>', 'Add a language to an existing extension'],
         ['zedx snippet add lsp', 'Wire up a language server into the extension'],
         ['zedx check', 'Validate your extension config'],
+        ['zedx install', 'Install as a Zed dev extension'],
         ['zedx version <major|minor|patch>', 'Bump extension version'],
         ['zedx sync', 'Sync Zed settings via a git repo'],
         ['zedx sync init', 'Link a git repo as the sync target'],
@@ -161,6 +163,13 @@ async function main() {
         .description('Validate extension config and show what is missing or incomplete')
         .action(async () => {
             await runCheck(getCallerDir());
+        });
+
+    program
+        .command('install')
+        .description('Install the current extension as a Zed dev extension')
+        .action(async () => {
+            await installDevExtension(getCallerDir());
         });
 
     const addCmd = program
