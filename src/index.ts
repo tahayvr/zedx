@@ -12,6 +12,7 @@ import { runCheck } from './check.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
+import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus } from './sync.js';
 
 type BumpType = 'major' | 'minor' | 'patch';
@@ -80,6 +81,7 @@ function printWelcome(): void {
         ['zedx create', 'Scaffold a new Zed extension'],
         ['zedx add theme <name>', 'Add a theme to an existing extension'],
         ['zedx add language <id>', 'Add a language to an existing extension'],
+        ['zedx snippet add lsp', 'Wire up a language server into the extension'],
         ['zedx check', 'Validate your extension config'],
         ['zedx version <major|minor|patch>', 'Bump extension version'],
         ['zedx sync', 'Sync Zed settings via a git repo'],
@@ -177,6 +179,17 @@ async function main() {
         .description('Add a new language to the extension')
         .action(async (id: string) => {
             await addLanguage(getCallerDir(), id);
+        });
+
+    const snippetCmd = program
+        .command('snippet')
+        .description('Inject a code snippet into an existing extension');
+
+    snippetCmd
+        .command('add lsp')
+        .description('Wire up a language server (Rust + WASM) into the extension')
+        .action(async () => {
+            await addLsp(getCallerDir());
         });
 
     const syncCmd = program

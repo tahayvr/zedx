@@ -1,0 +1,30 @@
+use zed_extension_api::{self as zed, LanguageServerId, Result};
+
+struct <%= structName %> {
+    // TODO(edit-me): add any cached state here (e.g. cached binary path)
+}
+
+impl zed::Extension for <%= structName %> {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn language_server_command(
+        &mut self,
+        _language_server_id: &LanguageServerId,
+        _worktree: &zed::Worktree,
+    ) -> Result<zed::Command> {
+        // TODO(edit-me): resolve the path to the LSP binary.
+        // Common patterns:
+        //   - zed::Command { command: worktree.which("<%= lspCommand %>")?.ok_or("...")?, ... }
+        //   - download the binary via zed::download_file and cache the path
+        // See: https://docs.rs/zed_extension_api
+        Ok(zed::Command {
+            command: "<%= lspCommand %>".to_string(), // TODO(edit-me): replace with actual binary path
+            args: vec![],                              // TODO(edit-me): add required args
+            env: vec![],
+        })
+    }
+}
+
+zed::register_extension!(<%= structName %>);
