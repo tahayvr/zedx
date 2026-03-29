@@ -27,6 +27,7 @@
 ; Learn more about Tree-sitter queries:
 ;   https://tree-sitter.github.io/tree-sitter/using-parsers/queries
 
+; TODO(edit-me): replace these with the actual node type names from your Tree-sitter grammar
 (string) @string
 (number) @number
 (comment) @comment

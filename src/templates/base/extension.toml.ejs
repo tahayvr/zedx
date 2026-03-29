@@ -2,21 +2,23 @@ id = "<%= id %>"
 name = "<%= name %>"
 version = "0.0.1"
 schema_version = 1
-authors = ["<%- author %>"]
+authors = ["<%- author %>"] # TODO(edit-me): replace with your name and email
 description = "<%= description %>"
-repository = "<%= repository %>"
+repository = "<%= repository %>" # TODO(edit-me): update to your actual repository URL
 
 <% if (types.includes('language') && grammarRepo) { %>
 [grammars.<%= languageId %>]
 repository = "<%= grammarRepo %>"
 rev = "<%= grammarRev || 'main' %>"
 <% } else if (types.includes('language')) { %>
+# TODO(edit-me): uncomment and fill in the grammar block once you have a Tree-sitter grammar repo
 # [grammars.<%= languageId %>]
 # repository = "https://github.com/user/tree-sitter-<%= languageId %>"
 # rev = "main"
 <% } %>
 
 <% if (types.includes('language')) { %>
+# TODO(edit-me): uncomment and fill in the LSP block if your language has a language server
 # [language_servers.my-lsp]
 # name = "My Language LSP"
 # languages = ["<%= languageName %>"]
