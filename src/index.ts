@@ -63,10 +63,84 @@ async function bumpExtensionVersion(type: BumpType): Promise<void> {
     p.log.success(color.green(`Bumped version from ${currentVersion} to ${newVersion}`));
 }
 
+function printWelcome(): void {
+    const ascii = String.raw`
+░        ░░        ░░       ░░░  ░░░░  ░
+▒▒▒▒▒▒  ▒▒▒  ▒▒▒▒▒▒▒▒  ▒▒▒▒  ▒▒▒  ▒▒  ▒▒
+▓▓▓▓  ▓▓▓▓▓      ▓▓▓▓  ▓▓▓▓  ▓▓▓▓    ▓▓▓
+██  ███████  ████████  ████  ███  ██  ██
+█        ██        ██       ███  ████  █
+                                        
+    `.trim();
+
+    console.log('\n' + color.cyan(color.bold(ascii)) + '\n');
+    console.log(color.bold('  The CLI toolkit for Zed Editor') + '\n');
+
+    const commands = [
+        ['zedx create', 'Scaffold a new Zed extension'],
+        ['zedx add theme <name>', 'Add a theme to an existing extension'],
+        ['zedx add language <id>', 'Add a language to an existing extension'],
+        ['zedx check', 'Validate your extension config'],
+        ['zedx version <major|minor|patch>', 'Bump extension version'],
+        ['zedx sync', 'Sync Zed settings via a git repo'],
+        ['zedx sync init', 'Link a git repo as the sync target'],
+        ['zedx sync status', 'Show sync state between local and remote'],
+        ['zedx sync install', 'Install the OS daemon for auto-sync'],
+        ['zedx sync uninstall', 'Remove the auto-sync daemon'],
+    ];
+
+    console.log(color.dim('  Commands:\n'));
+    for (const [cmd, desc] of commands) {
+        console.log(`  ${color.cyan(cmd.padEnd(38))}${color.dim(desc)}`);
+    }
+
+    console.log(
+        `\n  ${color.dim('Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions'))}\n`,
+    );
+}
+
+async function runCreate(): Promise<void> {
+    const options = await promptUser();
+
+    if (options.types.includes('theme')) {
+        const themeDetails = await promptThemeDetails();
+        Object.assign(options, themeDetails);
+    }
+
+    if (options.types.includes('language')) {
+        const languageDetails = await promptLanguageDetails();
+        Object.assign(options, languageDetails);
+    }
+
+    const targetDir = path.join(getCallerDir(), options.id);
+    await generateExtension(options, targetDir);
+
+    p.outro(
+        `${color.green('✓')} ${color.bold('Extension created successfully!')}\n` +
+            `${color.gray('─'.repeat(40))}\n` +
+            `${color.dim('Location:')} ${color.cyan(targetDir)}`,
+    );
+
+    p.outro(
+        `${color.yellow('⚡')} ${color.bold('Next steps')}\n\n` +
+            `  ${color.gray('1.')} Open Zed\n` +
+            `  ${color.gray('2.')} ${color.white('Extensions > Install Dev Extension')}\n` +
+            `  ${color.gray('3.')} Select ${color.cyan(options.id)} folder\n\n` +
+            `${color.dim('Learn more:')} ${color.underline(color.blue('https://zed.dev/docs/extensions/developing-extensions'))}`,
+    );
+}
+
 async function main() {
     const program = new Command();
 
-    program.name('zedx').description('Boilerplate generator for Zed Editor extensions.');
+    program.name('zedx').description('The CLI toolkit for Zed Editor.').helpOption(false);
+
+    program
+        .command('create')
+        .description('Scaffold a new Zed extension')
+        .action(async () => {
+            await runCreate();
+        });
 
     program
         .command('version')
@@ -141,35 +215,7 @@ async function main() {
         });
 
     if (process.argv.length <= 2) {
-        const options = await promptUser();
-
-        if (options.types.includes('theme')) {
-            const themeDetails = await promptThemeDetails();
-            Object.assign(options, themeDetails);
-        }
-
-        if (options.types.includes('language')) {
-            const languageDetails = await promptLanguageDetails();
-            Object.assign(options, languageDetails);
-        }
-
-        const targetDir = path.join(getCallerDir(), options.id);
-        await generateExtension(options, targetDir);
-
-        p.outro(
-            `${color.green('✓')} ${color.bold('Extension created successfully!')}\n` +
-                `${color.gray('─'.repeat(40))}\n` +
-                `${color.dim('Location:')} ${color.cyan(targetDir)}`,
-        );
-
-        p.outro(
-            `${color.yellow('⚡')} ${color.bold('Next steps')}\n\n` +
-                `  ${color.gray('1.')} Open Zed\n` +
-                `  ${color.gray('2.')} ${color.white('Extensions > Install Dev Extension')}\n` +
-                `  ${color.gray('3.')} Select ${color.cyan(options.id)} folder\n\n` +
-                `${color.dim('Learn more:')} ${color.underline(color.blue('https://zed.dev/docs/extensions/developing-extensions'))}`,
-        );
-
+        printWelcome();
         return;
     }
 
