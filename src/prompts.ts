@@ -4,8 +4,9 @@ import color from 'picocolors';
 import type { ExtensionOptions, ExtensionType, License, LanguageOptions } from './types/index.js';
 
 export async function promptUser(): Promise<ExtensionOptions> {
+    console.log('');
     p.intro(
-        `${color.bgBlue(color.bold(' zedx '))} ${color.blue('Boilerplate generator for Zed Editor extensions.')}`,
+        `${color.bgBlue(color.bold(' zedx create '))} ${color.blue('Boilerplate generator for Zed Editor extensions.')}`,
     );
 
     const nameDefault = 'my-zed-extension';

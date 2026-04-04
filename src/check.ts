@@ -26,6 +26,7 @@ function tomlHasUncommentedKey(content: string, key: string): boolean {
 }
 
 export async function runCheck(callerDir: string): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx check '))} ${color.blue('Validating extension config…')}`,
     );

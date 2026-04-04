@@ -33,6 +33,7 @@ function slugify(name: string): string {
 }
 
 export async function addTheme(callerDir: string, themeName: string): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx add theme '))} ${color.blue('Adding a theme to your extension…')}`,
     );
@@ -93,6 +94,7 @@ export async function addTheme(callerDir: string, themeName: string): Promise<vo
 }
 
 export async function addLanguage(callerDir: string, languageId: string): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx add language '))} ${color.blue('Adding a language to your extension…')}`,
     );

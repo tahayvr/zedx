@@ -17,7 +17,7 @@ brew install tahayvr/tap/zedx
 
 ```bash
 # Create a new extension
-zedx
+zedx create
 
 # Add a theme or language to an existing extension
 zedx add theme "Midnight Blue"

@@ -152,6 +152,7 @@ function buildManifest(extensionDir: string, toml: string): ExtensionManifest {
 
 // Main install function
 export async function installDevExtension(callerDir: string): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx install '))} ${color.blue('Installing as a Zed dev extension…')}`,
     );

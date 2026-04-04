@@ -45,6 +45,7 @@ function detectLanguages(callerDir: string): string[] {
 }
 
 export async function addLsp(callerDir: string): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx snippet add lsp '))} ${color.blue('Wiring up a language server…')}`,
     );

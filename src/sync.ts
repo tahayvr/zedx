@@ -154,6 +154,7 @@ async function applyRemoteSettings(
 
 // zedx sync status
 export async function syncStatus(): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx sync status '))} ${color.blue('Checking sync state…')}`,
     );
@@ -253,6 +254,7 @@ export async function syncStatus(): Promise<void> {
 
 // zedx sync init
 export async function syncInit(): Promise<void> {
+    console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx sync init '))} ${color.blue('Linking a git repo as the sync target…')}`,
     );
@@ -329,10 +331,12 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
         },
     };
 
-    if (!silent)
+    if (!silent) {
+        console.log('');
         p.intro(
             `${color.bgBlue(color.bold(' zedx sync '))} ${color.blue('Syncing Zed settings and extensions…')}`,
         );
+    }
 
     const config = await requireSyncConfig();
     const zedPaths = resolveZedPaths();

@@ -181,6 +181,7 @@ async function uninstallLinux(): Promise<void> {
 }
 
 export async function syncInstall(): Promise<void> {
+    console.log('');
     p.intro(color.bold('zedx sync install'));
 
     const platform = process.platform;
@@ -209,6 +210,7 @@ export async function syncInstall(): Promise<void> {
 }
 
 export async function syncUninstall(): Promise<void> {
+    console.log('');
     p.intro(color.bold('zedx sync uninstall'));
 
     const platform = process.platform;
