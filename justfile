@@ -11,6 +11,8 @@ build:
 # Bump version (major, minor, patch or <version> e.g. 1.2.3)
 version VER:
     pnpm version {{VER}}
+    @TAG=$(node -p "require('./package.json').version") && \
+    git push origin "v$TAG"
 
 # get latest published package sha256
 sha:
