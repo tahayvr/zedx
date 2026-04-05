@@ -188,6 +188,6 @@ export async function addLsp(callerDir: string): Promise<void> {
         `${color.green('✓')} LSP snippet added.\n\n` +
             `  ${color.dim('1.')} Edit ${color.cyan('src/lib.rs')} — implement ${color.white('language_server_command')}\n` +
             `  ${color.dim('2.')} Edit ${color.cyan('Cargo.toml')} — pin ${color.white('zed_extension_api')} to latest version\n` +
-            `  ${color.dim('3.')} ${color.dim('Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions/languages#language-servers'))}`,
+            `  ${color.dim('3.')} ${color.dim('Zed Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions/languages#language-servers'))}`,
     );
 }

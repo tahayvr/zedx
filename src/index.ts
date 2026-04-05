@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'module';
 import path from 'path';
 
 import * as p from '@clack/prompts';
@@ -15,6 +16,10 @@ import { installDevExtension } from './install.js';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus } from './sync.js';
+import type { ConflictStrategy } from './sync.js';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 type BumpType = 'major' | 'minor' | 'patch';
 
@@ -99,7 +104,7 @@ function printWelcome(): void {
     }
 
     console.log(
-        `\n  ${color.dim('Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions'))}\n`,
+        `\n  ${color.dim('Zed Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions'))}\n`,
     );
 }
 
@@ -137,7 +142,7 @@ async function runCreate(): Promise<void> {
 async function main() {
     const program = new Command();
 
-    program.name('zedx').description('The CLI toolkit for Zed Editor.').helpOption(false);
+    program.name('zedx').description('The CLI toolkit for Zed Editor.').version(`zedx v${version}`);
 
     program
         .command('create')
@@ -204,8 +209,19 @@ async function main() {
     const syncCmd = program
         .command('sync')
         .description('Sync Zed settings and extensions via a GitHub repo')
-        .action(async () => {
-            await runSync();
+        .option('--local', 'On conflict, always keep the local version')
+        .option('--remote', 'On conflict, always use the remote version')
+        .action(async (opts: { local?: boolean; remote?: boolean }) => {
+            if (opts.local && opts.remote) {
+                p.log.error(color.red('--local and --remote are mutually exclusive.'));
+                process.exit(1);
+            }
+            const conflict: ConflictStrategy = opts.local
+                ? 'local'
+                : opts.remote
+                  ? 'remote'
+                  : 'prompt';
+            await runSync({ conflict });
         });
 
     syncCmd
@@ -236,12 +252,14 @@ async function main() {
             await syncUninstall();
         });
 
-    if (process.argv.length <= 2) {
+    const argv = process.argv.filter(arg => arg !== '--');
+
+    if (argv.length <= 2) {
         printWelcome();
         return;
     }
 
-    program.parse(process.argv);
+    program.parse(argv);
 }
 
 main().catch(console.error);

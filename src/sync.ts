@@ -312,9 +312,13 @@ export async function syncInit(): Promise<void> {
     );
 }
 
+export type ConflictStrategy = 'local' | 'remote' | 'prompt';
+
 // zedx sync
-export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
-    const { silent = false } = opts;
+export async function runSync(
+    opts: { silent?: boolean; conflict?: ConflictStrategy } = {},
+): Promise<void> {
+    const { silent = false, conflict = 'prompt' } = opts;
 
     // In silent mode (daemon/watch), route all UI through plain console.log
     // Interactive conflict prompts fall back to "local wins".
@@ -466,19 +470,24 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
                     await fs.copy(file.repoPath, file.localPath, { overwrite: true });
                 }
             } else {
-                // Both changed
-                if (silent) {
+                // Both changed — resolve based on strategy
+                // Determine the effective resolution:
+                //   - explicit --local / --remote flag always wins
+                //   - silent (daemon) mode falls back to local
+                //   - otherwise prompt interactively
+                let resolution: 'local' | 'remote';
+
+                if (conflict === 'local' || conflict === 'remote') {
+                    resolution = conflict;
+                    log.warn(
+                        `${file.label}: conflict — using ${color.bold(resolution)} (--${resolution} flag).`,
+                    );
+                } else if (silent) {
                     // Daemon can't prompt — local wins, will be pushed
+                    resolution = 'local';
                     log.warn(
                         `${file.label}: conflict detected in unattended mode — keeping local.`,
                     );
-                    if (file.label === 'settings.json') {
-                        await prepareSettingsForPush(file.localPath, file.repoPath);
-                    } else {
-                        await fs.ensureDir(path.dirname(file.repoPath));
-                        await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                    }
-                    anyChanges = true;
                 } else {
                     p.log.warn(color.yellow(`conflict between local and remote ${file.label}`));
 
@@ -503,28 +512,32 @@ export async function runSync(opts: { silent?: boolean } = {}): Promise<void> {
                         process.exit(0);
                     }
 
-                    if (choice === 'local') {
+                    resolution = choice as 'local' | 'remote';
+                }
+
+                if (resolution === 'local') {
+                    if (!silent && conflict === 'prompt')
                         p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                        if (file.label === 'settings.json') {
-                            await prepareSettingsForPush(file.localPath, file.repoPath);
-                        } else {
-                            await fs.ensureDir(path.dirname(file.repoPath));
-                            await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                        }
-                        anyChanges = true;
+                    if (file.label === 'settings.json') {
+                        await prepareSettingsForPush(file.localPath, file.repoPath);
                     } else {
+                        await fs.ensureDir(path.dirname(file.repoPath));
+                        await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                    }
+                    anyChanges = true;
+                } else {
+                    if (!silent && conflict === 'prompt')
                         p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
-                        if (file.label === 'settings.json') {
-                            await applyRemoteSettings(
-                                file.repoPath,
-                                path.join(tmp, 'extensions', 'index.json'),
-                                file.localPath,
-                                silent,
-                            );
-                        } else {
-                            await fs.ensureDir(path.dirname(file.localPath));
-                            await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                        }
+                    if (file.label === 'settings.json') {
+                        await applyRemoteSettings(
+                            file.repoPath,
+                            path.join(tmp, 'extensions', 'index.json'),
+                            file.localPath,
+                            silent,
+                        );
+                    } else {
+                        await fs.ensureDir(path.dirname(file.localPath));
+                        await fs.copy(file.repoPath, file.localPath, { overwrite: true });
                     }
                 }
             }
