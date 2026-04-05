@@ -314,11 +314,49 @@ export async function syncInit(): Promise<void> {
 
 export type ConflictStrategy = 'local' | 'remote' | 'prompt';
 
+// zedx sync select
+export async function syncSelect(): Promise<void> {
+    console.log('');
+    p.intro(
+        `${color.bgBlue(color.bold(' zedx sync select '))} ${color.blue('Choose which files to sync…')}`,
+    );
+
+    await requireSyncConfig();
+
+    const allFiles: Array<{ value: string; label: string; hint: string }> = [
+        {
+            value: 'settings',
+            label: 'settings.json',
+            hint: 'Zed editor settings',
+        },
+        {
+            value: 'extensions',
+            label: 'extensions/index.json',
+            hint: 'Installed extensions list',
+        },
+    ];
+
+    const selected = await p.multiselect({
+        message: 'Select files to sync',
+        options: allFiles,
+        required: true,
+    });
+
+    if (p.isCancel(selected)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const selectedFiles = selected as string[];
+
+    await runSync({ selectedFiles });
+}
+
 // zedx sync
 export async function runSync(
-    opts: { silent?: boolean; conflict?: ConflictStrategy } = {},
+    opts: { silent?: boolean; conflict?: ConflictStrategy; selectedFiles?: string[] } = {},
 ): Promise<void> {
-    const { silent = false, conflict = 'prompt' } = opts;
+    const { silent = false, conflict = 'prompt', selectedFiles } = opts;
 
     // In silent mode (daemon/watch), route all UI through plain console.log
     // Interactive conflict prompts fall back to "local wins".
@@ -372,18 +410,25 @@ export async function runSync(
         // 2. Determine what changed for each file
         const lastSync = config.lastSync ? new Date(config.lastSync) : null;
 
-        const files: Array<{ repoPath: string; localPath: string; label: string }> = [
-            {
-                repoPath: path.join(tmp, 'settings.json'),
-                localPath: zedPaths.settings,
-                label: 'settings.json',
-            },
-            {
-                repoPath: path.join(tmp, 'extensions', 'index.json'),
-                localPath: zedPaths.extensions,
-                label: 'extensions/index.json',
-            },
-        ];
+        const allFiles: Array<{ repoPath: string; localPath: string; label: string; key: string }> =
+            [
+                {
+                    key: 'settings',
+                    repoPath: path.join(tmp, 'settings.json'),
+                    localPath: zedPaths.settings,
+                    label: 'settings.json',
+                },
+                {
+                    key: 'extensions',
+                    repoPath: path.join(tmp, 'extensions', 'index.json'),
+                    localPath: zedPaths.extensions,
+                    label: 'extensions/index.json',
+                },
+            ];
+
+        const files = selectedFiles
+            ? allFiles.filter(f => selectedFiles.includes(f.key))
+            : allFiles;
 
         let anyChanges = false;
 

@@ -15,7 +15,7 @@ import { generateExtension } from './generator.js';
 import { installDevExtension } from './install.js';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { addLsp } from './snippet.js';
-import { syncInit, runSync, syncStatus } from './sync.js';
+import { syncInit, runSync, syncStatus, syncSelect } from './sync.js';
 import type { ConflictStrategy } from './sync.js';
 
 const require = createRequire(import.meta.url);
@@ -92,6 +92,7 @@ function printWelcome(): void {
         ['zedx install', 'Install as a Zed dev extension'],
         ['zedx version <major|minor|patch>', 'Bump extension version'],
         ['zedx sync', 'Sync Zed settings via a git repo'],
+        ['zedx sync select', 'Choose which files to sync interactively'],
         ['zedx sync init', 'Link a git repo as the sync target'],
         ['zedx sync status', 'Show sync state between local and remote'],
         ['zedx sync install', 'Install the OS daemon for auto-sync'],
@@ -236,6 +237,13 @@ async function main() {
         .description('Show sync state between local Zed config and the remote repo')
         .action(async () => {
             await syncStatus();
+        });
+
+    syncCmd
+        .command('select')
+        .description('Interactively choose which files to sync')
+        .action(async () => {
+            await syncSelect();
         });
 
     syncCmd
