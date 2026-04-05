@@ -1,6 +1,6 @@
 {
     "name": "zedx",
-    "version": "0.8.1",
+    "version": "0.8.2",
     "description": "Scaffold Zed Editor extensions and sync your settings across machines.",
     "keywords": [
         "boilerplate",
