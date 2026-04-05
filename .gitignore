@@ -21,4 +21,10 @@ pnpm-workspace.yaml
 !.oxfmtrc.json
 !.gitignore
 
+# DX
 !justfile
+
+# releases
+!.github
+!.github/**
+!cliff.toml
