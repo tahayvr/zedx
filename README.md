@@ -1,6 +1,6 @@
 # zedx
 
-Scaffold [Zed Editor](https://zed.dev/) extensions and sync your settings across machines.
+CLI toolkit for Scaffolding [Zed Editor](https://zed.dev/) extensions and syncing settings across machines.
 
 ![screenshot](./assets/screenshot1.png)
 
