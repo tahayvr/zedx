@@ -188,7 +188,7 @@ export async function syncInstall(): Promise<void> {
     if (platform !== 'darwin' && platform !== 'linux') unsupportedPlatform();
 
     const zedPaths = resolveZedPaths();
-    const watchPaths = [zedPaths.settings];
+    const watchPaths = [zedPaths.settings, zedPaths.keymap];
     const zedxBin = resolveZedxBinary();
 
     p.log.info(`Binary:  ${color.dim(zedxBin)}`);

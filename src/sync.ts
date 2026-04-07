@@ -176,7 +176,12 @@ export async function syncStatus(): Promise<void> {
             {
                 repoPath: path.join(tmp, 'settings.json'),
                 localPath: zedPaths.settings,
-                label: 'settings.json',
+                label: 'Settings',
+            },
+            {
+                repoPath: path.join(tmp, 'keymap.json'),
+                localPath: zedPaths.keymap,
+                label: 'Key bindings',
             },
         ];
 
@@ -319,8 +324,13 @@ export async function syncSelect(): Promise<void> {
     const allFiles: Array<{ value: string; label: string; hint: string }> = [
         {
             value: 'settings',
-            label: 'settings.json',
-            hint: 'Zed editor settings (includes extensions list)',
+            label: 'Settings',
+            hint: 'settings.json',
+        },
+        {
+            value: 'keymap',
+            label: 'Key bindings',
+            hint: 'keymap.json',
         },
     ];
 
@@ -363,9 +373,7 @@ export async function runSync(
 
     if (!silent) {
         console.log('');
-        p.intro(
-            `${color.bgBlue(color.bold(' zedx sync '))} ${color.blue('Syncing Zed settings and extensions…')}`,
-        );
+        p.intro(`${color.bgBlue(color.bold(' zedx sync '))} ${color.blue('Syncing Zed config…')}`);
     }
 
     const config = await requireSyncConfig();
@@ -404,7 +412,13 @@ export async function runSync(
                     key: 'settings',
                     repoPath: path.join(tmp, 'settings.json'),
                     localPath: zedPaths.settings,
-                    label: 'settings.json',
+                    label: 'Settings',
+                },
+                {
+                    key: 'keymap',
+                    repoPath: path.join(tmp, 'keymap.json'),
+                    localPath: zedPaths.keymap,
+                    label: 'Key bindings',
                 },
             ];
 
@@ -560,7 +574,7 @@ export async function runSync(
         // 3. Commit + push if any local files were written to the repo
         if (anyChanges) {
             spinner.start('Pushing changes to remote...');
-            await git.add(['settings.json']);
+            await git.add(files.map(f => path.basename(f.repoPath)));
 
             const status = await git.status();
             if (status.staged.length > 0) {

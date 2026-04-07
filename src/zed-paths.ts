@@ -8,8 +8,10 @@ export function resolveZedPaths(): ZedPaths {
     const platform = process.platform;
 
     if (platform === 'darwin') {
+        const configDir = path.join(home, '.config', 'zed');
         return {
-            settings: path.join(home, '.config', 'zed', 'settings.json'),
+            settings: path.join(configDir, 'settings.json'),
+            keymap: path.join(configDir, 'keymap.json'),
             extensionsIndex: path.join(
                 home,
                 'Library',
@@ -26,9 +28,11 @@ export function resolveZedPaths(): ZedPaths {
             process.env.FLATPAK_XDG_DATA_HOME ||
             process.env.XDG_DATA_HOME ||
             path.join(home, '.local', 'share');
+        const configDir = path.join(home, '.config', 'zed');
 
         return {
-            settings: path.join(home, '.config', 'zed', 'settings.json'),
+            settings: path.join(configDir, 'settings.json'),
+            keymap: path.join(configDir, 'keymap.json'),
             extensionsIndex: path.join(xdgData, 'zed', 'extensions', 'index.json'),
         };
     }
@@ -36,9 +40,11 @@ export function resolveZedPaths(): ZedPaths {
     if (platform === 'win32') {
         const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
         const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+        const configDir = path.join(appData, 'Zed');
 
         return {
-            settings: path.join(appData, 'Zed', 'settings.json'),
+            settings: path.join(configDir, 'settings.json'),
+            keymap: path.join(configDir, 'keymap.json'),
             extensionsIndex: path.join(localAppData, 'Zed', 'extensions', 'index.json'),
         };
     }
