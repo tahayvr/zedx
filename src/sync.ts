@@ -169,7 +169,7 @@ export async function syncStatus(): Promise<void> {
         let remoteExists = true;
         try {
             const git = simpleGit(tmp);
-            await git.clone(config.syncRepo, tmp, ['--depth', '1', '--branch', config.branch]);
+            await git.clone(config.syncRepo, tmp, ['--branch', config.branch]);
             spinner.stop('Remote fetched.');
         } catch {
             remoteExists = false;
@@ -421,7 +421,7 @@ export async function runSync(
 
         spinner.start(`Fetching ${config.syncRepo}...`);
         try {
-            await git.clone(config.syncRepo, tmp, ['--depth', '1', '--branch', config.branch]);
+            await git.clone(config.syncRepo, tmp, ['--branch', config.branch]);
             spinner.stop('Remote fetched.');
         } catch {
             remoteExists = false;
