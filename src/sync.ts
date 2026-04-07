@@ -52,104 +52,93 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     }
 }
 
-// Prepare settings.json for pushing to the repo by stripping auto_install_extensions.
-// That field is derived from extensions/index.json on pull, so storing it in the
-// remote would create stale/conflicting data across machines.
-async function prepareSettingsForPush(
+// Before every push, reconcile auto_install_extensions in settings.json against
+// the live extensions/index.json so that:
+//   - newly installed extensions (present in index, missing from the list) are added as true
+//   - uninstalled extensions (absent from index, set to true in the list) are removed
+//   - entries explicitly set to false by the user are always preserved (user intent)
+async function reconcileAutoInstallExtensions(
     localSettingsPath: string,
-    repoSettingsPath: string,
-): Promise<void> {
-    const raw = await fs.readFile(localSettingsPath, 'utf-8');
-    const stripped = raw.replace(/\/\/[^\n]*/g, '');
-    let settingsObj: Record<string, unknown> = {};
-    try {
-        settingsObj = JSON.parse(stripped);
-    } catch {
-        // If we can't parse it (e.g. complex comments), push as-is
-        await fs.ensureDir(path.dirname(repoSettingsPath));
-        await fs.copy(localSettingsPath, repoSettingsPath, { overwrite: true });
-        return;
-    }
-    delete settingsObj['auto_install_extensions'];
-    await fs.ensureDir(path.dirname(repoSettingsPath));
-    await fs.writeFile(repoSettingsPath, JSON.stringify(settingsObj, null, 4), 'utf-8');
-}
-
-// Extension merge helper
-async function applyRemoteSettings(
-    repoSettings: string,
-    repoExtensions: string,
-    localSettingsPath: string,
+    localExtensionsIndexPath: string,
     silent = false,
 ): Promise<void> {
-    // Backup existing settings
+    if (!(await fs.pathExists(localExtensionsIndexPath))) return;
+
+    let settingsObj: Record<string, unknown> = {};
     if (await fs.pathExists(localSettingsPath)) {
-        await fs.copy(localSettingsPath, localSettingsPath + '.bak', { overwrite: true });
-        if (!silent) p.log.info(`Backed up settings to ${color.dim(localSettingsPath + '.bak')}`);
-    }
-
-    let settingsJson = await fs.readFile(repoSettings, 'utf-8');
-
-    // Merge auto_install_extensions from index.json into settings
-    if (await fs.pathExists(repoExtensions)) {
         try {
-            const indexJson = (await fs.readJson(repoExtensions)) as {
-                extensions?: Record<string, { dev?: boolean }>;
-            };
-
-            const extensionIds = Object.keys(indexJson.extensions ?? {}).filter(
-                id => !indexJson.extensions![id]?.dev,
-            );
-
-            if (extensionIds.length > 0) {
-                const stripped = settingsJson.replace(/\/\/[^\n]*/g, '');
-                let settingsObj: Record<string, unknown> = {};
-                try {
-                    settingsObj = JSON.parse(stripped);
-                } catch {
-                    if (!silent)
-                        p.log.warn(
-                            color.yellow(
-                                'Could not parse settings.json — skipping extension merge.',
-                            ),
-                        );
-                }
-
-                // Preserve any existing entries (e.g. false entries for "never install"),
-                // then add true for every extension recorded in index.json.
-                const existing =
-                    typeof settingsObj['auto_install_extensions'] === 'object' &&
-                    settingsObj['auto_install_extensions'] !== null
-                        ? (settingsObj['auto_install_extensions'] as Record<string, boolean>)
-                        : {};
-
-                const autoInstall: Record<string, boolean> = { ...existing };
-                for (const id of extensionIds) {
-                    // Only set to true if there is no explicit user preference already
-                    if (!(id in autoInstall)) {
-                        autoInstall[id] = true;
-                    }
-                }
-                settingsObj['auto_install_extensions'] = autoInstall;
-                settingsJson = JSON.stringify(settingsObj, null, 4);
-
-                if (!silent)
-                    p.log.info(
-                        `Injected ${color.cyan(String(extensionIds.length))} extension(s) into ${color.dim('auto_install_extensions')}`,
-                    );
-            }
+            const raw = await fs.readFile(localSettingsPath, 'utf-8');
+            settingsObj = JSON.parse(raw.replace(/\/\/[^\n]*/g, ''));
         } catch {
             if (!silent)
                 p.log.warn(
                     color.yellow(
-                        'Could not parse extensions/index.json — skipping extension merge.',
+                        'Could not parse settings.json — skipping extension reconciliation.',
                     ),
                 );
+            return;
         }
     }
 
+    let installedIds: string[] = [];
+    try {
+        const indexJson = (await fs.readJson(localExtensionsIndexPath)) as {
+            extensions?: Record<string, { dev?: boolean }>;
+        };
+        installedIds = Object.keys(indexJson.extensions ?? {}).filter(
+            id => !indexJson.extensions![id]?.dev,
+        );
+    } catch {
+        if (!silent)
+            p.log.warn(
+                color.yellow(
+                    'Could not parse extensions/index.json — skipping extension reconciliation.',
+                ),
+            );
+        return;
+    }
+
+    const existing =
+        typeof settingsObj['auto_install_extensions'] === 'object' &&
+        settingsObj['auto_install_extensions'] !== null
+            ? (settingsObj['auto_install_extensions'] as Record<string, boolean>)
+            : {};
+
+    const installedSet = new Set(installedIds);
+    const reconciled: Record<string, boolean> = {};
+
+    // Keep all explicit false entries (user said "never install this")
+    for (const [id, val] of Object.entries(existing)) {
+        if (val === false) reconciled[id] = false;
+    }
+    // Add every currently installed extension as true
+    for (const id of installedIds) {
+        reconciled[id] = true;
+    }
+    // Drop true entries for extensions no longer installed
+    // (already handled — we only re-add what's in installedSet above)
+
+    const added = installedIds.filter(id => !(id in existing));
+    const removed = Object.keys(existing).filter(
+        id => existing[id] === true && !installedSet.has(id),
+    );
+
+    if (added.length === 0 && removed.length === 0) return;
+
+    settingsObj['auto_install_extensions'] = reconciled;
     await fs.ensureDir(path.dirname(localSettingsPath));
-    await fs.writeFile(localSettingsPath, settingsJson, 'utf-8');
+    await fs.writeFile(localSettingsPath, JSON.stringify(settingsObj, null, 4), 'utf-8');
+
+    if (!silent) {
+        if (added.length > 0)
+            p.log.info(
+                `Added ${color.cyan(String(added.length))} new extension(s) to ${color.dim('auto_install_extensions')}: ${added.join(', ')}`,
+            );
+        if (removed.length > 0)
+            p.log.info(
+                `Removed ${color.cyan(String(removed.length))} uninstalled extension(s) from ${color.dim('auto_install_extensions')}: ${removed.join(', ')}`,
+            );
+    }
 }
 
 // zedx sync status
@@ -188,11 +177,6 @@ export async function syncStatus(): Promise<void> {
                 repoPath: path.join(tmp, 'settings.json'),
                 localPath: zedPaths.settings,
                 label: 'settings.json',
-            },
-            {
-                repoPath: path.join(tmp, 'extensions', 'index.json'),
-                localPath: zedPaths.extensions,
-                label: 'extensions/index.json',
             },
         ];
 
@@ -336,12 +320,7 @@ export async function syncSelect(): Promise<void> {
         {
             value: 'settings',
             label: 'settings.json',
-            hint: 'Zed editor settings',
-        },
-        {
-            value: 'extensions',
-            label: 'extensions/index.json',
-            hint: 'Installed extensions list',
+            hint: 'Zed editor settings (includes extensions list)',
         },
     ];
 
@@ -427,12 +406,6 @@ export async function runSync(
                     localPath: zedPaths.settings,
                     label: 'settings.json',
                 },
-                {
-                    key: 'extensions',
-                    repoPath: path.join(tmp, 'extensions', 'index.json'),
-                    localPath: zedPaths.extensions,
-                    label: 'extensions/index.json',
-                },
             ];
 
         const files = selectedFiles
@@ -451,15 +424,18 @@ export async function runSync(
                 continue;
             }
 
-            // Remote doesn't have it yet — push local
+            // Remote doesn't have it yet — first push.
+            // Bootstrap auto_install_extensions from local extensions/index.json so
+            // the synced settings.json is self-contained on a fresh machine.
             if (localExists && !remoteFileExists) {
                 log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
-                if (file.label === 'settings.json') {
-                    await prepareSettingsForPush(file.localPath, file.repoPath);
-                } else {
-                    await fs.ensureDir(path.dirname(file.repoPath));
-                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                }
+                await reconcileAutoInstallExtensions(
+                    file.localPath,
+                    zedPaths.extensionsIndex,
+                    silent,
+                );
+                await fs.ensureDir(path.dirname(file.repoPath));
+                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                 anyChanges = true;
                 continue;
             }
@@ -467,17 +443,13 @@ export async function runSync(
             // Local doesn't have it — pull remote
             if (!localExists && remoteFileExists) {
                 log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
-                if (file.label === 'settings.json') {
-                    await applyRemoteSettings(
-                        file.repoPath,
-                        path.join(tmp, 'extensions', 'index.json'),
-                        file.localPath,
-                        silent,
-                    );
-                } else {
-                    await fs.ensureDir(path.dirname(file.localPath));
-                    await fs.copy(file.repoPath, file.localPath, { overwrite: true });
+                if (await fs.pathExists(file.localPath)) {
+                    await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
+                    if (!silent)
+                        p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
                 }
+                await fs.ensureDir(path.dirname(file.localPath));
+                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
                 continue;
             }
 
@@ -500,29 +472,23 @@ export async function runSync(
             const remoteChanged = !lastSync || remoteMtime > lastSync;
 
             if (localChanged && !remoteChanged) {
-                // Only local changed → push
+                // Only local changed → reconcile extensions then push
                 log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
-                if (file.label === 'settings.json') {
-                    await prepareSettingsForPush(file.localPath, file.repoPath);
-                } else {
-                    await fs.ensureDir(path.dirname(file.repoPath));
-                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                }
+                await reconcileAutoInstallExtensions(
+                    file.localPath,
+                    zedPaths.extensionsIndex,
+                    silent,
+                );
+                await fs.ensureDir(path.dirname(file.repoPath));
+                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                 anyChanges = true;
             } else if (remoteChanged && !localChanged) {
                 // Only remote changed → pull
                 log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
-                if (file.label === 'settings.json') {
-                    await applyRemoteSettings(
-                        file.repoPath,
-                        path.join(tmp, 'extensions', 'index.json'),
-                        file.localPath,
-                        silent,
-                    );
-                } else {
-                    await fs.ensureDir(path.dirname(file.localPath));
-                    await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                }
+                await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
+                if (!silent)
+                    p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
+                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
             } else {
                 // Both changed — resolve based on strategy
                 // Determine the effective resolution:
@@ -572,27 +538,21 @@ export async function runSync(
                 if (resolution === 'local') {
                     if (!silent && conflict === 'prompt')
                         p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                    if (file.label === 'settings.json') {
-                        await prepareSettingsForPush(file.localPath, file.repoPath);
-                    } else {
-                        await fs.ensureDir(path.dirname(file.repoPath));
-                        await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                    }
+                    await reconcileAutoInstallExtensions(
+                        file.localPath,
+                        zedPaths.extensionsIndex,
+                        silent,
+                    );
+                    await fs.ensureDir(path.dirname(file.repoPath));
+                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                     anyChanges = true;
                 } else {
                     if (!silent && conflict === 'prompt')
                         p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
-                    if (file.label === 'settings.json') {
-                        await applyRemoteSettings(
-                            file.repoPath,
-                            path.join(tmp, 'extensions', 'index.json'),
-                            file.localPath,
-                            silent,
-                        );
-                    } else {
-                        await fs.ensureDir(path.dirname(file.localPath));
-                        await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                    }
+                    await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
+                    if (!silent)
+                        p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
+                    await fs.copy(file.repoPath, file.localPath, { overwrite: true });
                 }
             }
         }
@@ -600,7 +560,7 @@ export async function runSync(
         // 3. Commit + push if any local files were written to the repo
         if (anyChanges) {
             spinner.start('Pushing changes to remote...');
-            await git.add(['settings.json', path.join('extensions', 'index.json')]);
+            await git.add(['settings.json']);
 
             const status = await git.status();
             if (status.staged.length > 0) {

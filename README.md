@@ -46,10 +46,7 @@ zedx check
 
 ### Sync
 
-Sync your Zed config across machines using a private GitHub repo as the source of truth. The following files are tracked:
-
-- `settings.json` — editor settings
-- `extensions/index.json` — installed extensions list
+Sync your Zed config across machines using a private GitHub repo as the source of truth.
 
 **1. Link a repo (one-time setup)**
 
@@ -58,6 +55,9 @@ zedx sync init
 ```
 
 Prompts for a GitHub repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The result is saved to `~/.config/zedx/config.json`. No files are synced yet.
+
+> [!NOTE]
+> Only `settings.json` is tracked. Extension sync is handled via the `auto_install_extensions` field within it, which Zed uses to automatically download and install extensions.
 
 **2. Run a sync**
 
@@ -73,22 +73,14 @@ zedx sync --remote   # Always use remote on conflict (no prompt)
 zedx sync status
 ```
 
-**4. Selective sync**
-
-```bash
-zedx sync select
-```
-
-Opens an interactive prompt to choose which files to sync (`settings`, `extensions`, or both).
-
-**5. Auto-sync with an OS daemon**
+**4. Auto-sync with an OS daemon**
 
 ```bash
 zedx sync install    # Install and enable the daemon
 zedx sync uninstall  # Disable and remove the daemon
 ```
 
-Installs a file-watcher that triggers `zedx sync` automatically whenever a tracked Zed config file is saved. Supported platforms:
+Installs a file-watcher that triggers `zedx sync` automatically whenever `settings.json` is saved. Supported platforms:
 
 | Platform | Mechanism                                              | Logs                                     |
 | -------- | ------------------------------------------------------ | ---------------------------------------- |
@@ -106,3 +98,7 @@ zedx version patch   # 1.2.3 → 1.2.4
 zedx version minor   # 1.2.3 → 1.3.0
 zedx version major   # 1.2.3 → 2.0.0
 ```
+
+### License
+
+License is Apache-2.0. See [LICENSE](./LICENSE) for details.

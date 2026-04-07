@@ -2,7 +2,7 @@ export type ExtensionType = 'theme' | 'language';
 
 export interface ZedPaths {
     settings: string;
-    extensions: string;
+    extensionsIndex: string; // local-only: used to bootstrap auto_install_extensions, never synced
 }
 
 export interface SyncConfig {

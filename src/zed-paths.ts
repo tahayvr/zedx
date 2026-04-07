@@ -10,7 +10,7 @@ export function resolveZedPaths(): ZedPaths {
     if (platform === 'darwin') {
         return {
             settings: path.join(home, '.config', 'zed', 'settings.json'),
-            extensions: path.join(
+            extensionsIndex: path.join(
                 home,
                 'Library',
                 'Application Support',
@@ -29,7 +29,7 @@ export function resolveZedPaths(): ZedPaths {
 
         return {
             settings: path.join(home, '.config', 'zed', 'settings.json'),
-            extensions: path.join(xdgData, 'zed', 'extensions', 'index.json'),
+            extensionsIndex: path.join(xdgData, 'zed', 'extensions', 'index.json'),
         };
     }
 
@@ -39,7 +39,7 @@ export function resolveZedPaths(): ZedPaths {
 
         return {
             settings: path.join(appData, 'Zed', 'settings.json'),
-            extensions: path.join(localAppData, 'Zed', 'extensions', 'index.json'),
+            extensionsIndex: path.join(localAppData, 'Zed', 'extensions', 'index.json'),
         };
     }
 
