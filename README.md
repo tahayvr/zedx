@@ -29,6 +29,7 @@ zedx create
 zedx add theme "Midnight Blue"
 zedx add language rust
 ```
+
 ### Supported extension types:
 
 1. **Themes** - Color schemes for the editor
@@ -89,10 +90,10 @@ zedx sync uninstall  # Disable and remove the daemon
 
 Installs a file-watcher that triggers `zedx sync` automatically whenever a tracked Zed config file is saved. Supported platforms:
 
-| Platform | Mechanism | Logs |
-|---|---|---|
-| macOS | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | `~/Library/Logs/zedx-sync.log` |
-| Linux | systemd user units (`~/.config/systemd/user/`) | `journalctl --user -u zedx-sync.service` |
+| Platform | Mechanism                                              | Logs                                     |
+| -------- | ------------------------------------------------------ | ---------------------------------------- |
+| macOS    | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | `~/Library/Logs/zedx-sync.log`           |
+| Linux    | systemd user units (`~/.config/systemd/user/`)         | `journalctl --user -u zedx-sync.service` |
 
 The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. When a conflict is detected in daemon mode (no TTY), local always wins and a warning is logged.
 
