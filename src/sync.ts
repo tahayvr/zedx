@@ -196,6 +196,8 @@ export async function syncStatus(): Promise<void> {
             },
         ];
 
+        let needsSync = false;
+
         for (const file of files) {
             const localExists = await fs.pathExists(file.localPath);
             const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
@@ -209,6 +211,7 @@ export async function syncStatus(): Promise<void> {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.green('local only')} — not pushed yet`,
                 );
+                needsSync = true;
                 continue;
             }
 
@@ -216,6 +219,7 @@ export async function syncStatus(): Promise<void> {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.cyan('remote only')} — not pulled yet`,
                 );
+                needsSync = true;
                 continue;
             }
 
@@ -246,10 +250,15 @@ export async function syncStatus(): Promise<void> {
                     `${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`,
                 );
             }
+            needsSync = true;
+        }
+
+        if (needsSync) {
+            p.outro(`Run ${color.cyan('zedx sync')} to resolve.`);
+        } else {
+            p.outro('Everything is in sync.');
         }
     });
-
-    p.outro(`Run ${color.cyan('zedx sync')} to resolve.`);
 }
 
 // zedx sync init
