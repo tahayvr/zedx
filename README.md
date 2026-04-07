@@ -1,6 +1,10 @@
-# zedx
+<div align="center">
+
+<img src="./assets/zedx-logo.png" width="300" alt="ZedX Logo" />
 
 CLI toolkit for Scaffolding [Zed Editor](https://zed.dev/) extensions and syncing settings across machines.
+
+</div>
 
 ![screenshot](./assets/screenshot1.png)
 
@@ -13,7 +17,9 @@ npm install -g zedx
 brew install tahayvr/tap/zedx
 ```
 
-### Usage
+## Usage
+
+### Scaffolding an extension
 
 ```bash
 # Create a new extension
@@ -22,28 +28,80 @@ zedx create
 # Add a theme or language to an existing extension
 zedx add theme "Midnight Blue"
 zedx add language rust
-
-# Validate extension config and show what is missing or incomplete
-zedx check
-
-# Bump extension version
-zedx version patch   # 1.2.3 → 1.2.4
-zedx version minor   # 1.2.3 → 1.3.0
-zedx version major   # 1.2.3 → 2.0.0
-
-# Sync Zed settings and extensions via a GitHub repo
-zedx sync init       # Link a GitHub repo as the sync target (run once)
-zedx sync            # Sync local and remote config (prompts on conflict)
-zedx sync --local    # Sync, always keeping local on conflict
-zedx sync --remote   # Sync, always using remote on conflict
-zedx sync status     # Show sync state between local config and the remote repo
-zedx sync install    # Install an OS daemon to auto-sync when Zed config changes
-zedx sync uninstall  # Remove the OS daemon
 ```
-
 ### Supported extension types:
 
 1. **Themes** - Color schemes for the editor
 2. **Languages** - Syntax highlighting, indentation, and optional LSP support
 
 You can choose to include theme, language, or both when creating an extension.
+
+### Validation
+
+```bash
+# Validate extension config and show what is missing or incomplete
+zedx check
+```
+
+### Sync
+
+Sync your Zed config across machines using a private GitHub repo as the source of truth. The following files are tracked:
+
+- `settings.json` — editor settings
+- `extensions/index.json` — installed extensions list
+
+**1. Link a repo (one-time setup)**
+
+```bash
+zedx sync init
+```
+
+Prompts for a GitHub repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The result is saved to `~/.config/zedx/config.json`. No files are synced yet.
+
+**2. Run a sync**
+
+```bash
+zedx sync            # Sync local ↔ remote, prompts when both sides changed
+zedx sync --local    # Always keep local on conflict (no prompt)
+zedx sync --remote   # Always use remote on conflict (no prompt)
+```
+
+**3. Check sync state**
+
+```bash
+zedx sync status
+```
+
+**4. Selective sync**
+
+```bash
+zedx sync select
+```
+
+Opens an interactive prompt to choose which files to sync (`settings`, `extensions`, or both).
+
+**5. Auto-sync with an OS daemon**
+
+```bash
+zedx sync install    # Install and enable the daemon
+zedx sync uninstall  # Disable and remove the daemon
+```
+
+Installs a file-watcher that triggers `zedx sync` automatically whenever a tracked Zed config file is saved. Supported platforms:
+
+| Platform | Mechanism | Logs |
+|---|---|---|
+| macOS | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | `~/Library/Logs/zedx-sync.log` |
+| Linux | systemd user units (`~/.config/systemd/user/`) | `journalctl --user -u zedx-sync.service` |
+
+The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. When a conflict is detected in daemon mode (no TTY), local always wins and a warning is logged.
+
+### Versioning
+
+Bump the extension version:
+
+```bash
+zedx version patch   # 1.2.3 → 1.2.4
+zedx version minor   # 1.2.3 → 1.3.0
+zedx version major   # 1.2.3 → 2.0.0
+```

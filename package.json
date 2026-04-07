@@ -7,7 +7,9 @@
         "extension",
         "scaffold",
         "zed",
-        "zed-editor"
+        "zed-editor",
+        "settings",
+        "sync"
     ],
     "homepage": "https://github.com/tahayvr/zedx#readme",
     "license": "Apache-2.0",
