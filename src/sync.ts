@@ -279,6 +279,17 @@ export async function syncInit(): Promise<void> {
         `${color.bgBlue(color.bold(' zedx sync init '))} ${color.blue('Linking a git repo as the sync target…')}`,
     );
 
+    const existing = await readSyncConfig();
+    if (existing) {
+        p.log.warn(
+            `Sync is already configured.\n\n` +
+                `  Repo:   ${color.cyan(existing.syncRepo)}\n` +
+                `  Branch: ${color.cyan(existing.branch)}\n\n` +
+                `  Run ${color.cyan('zedx config')} to make changes.`,
+        );
+        process.exit(0);
+    }
+
     const repo = await p.text({
         message: 'Git repo URL (SSH or HTTPS)',
         placeholder: 'https://github.com/you/zed-config.git',
