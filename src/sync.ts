@@ -185,7 +185,10 @@ export async function syncStatus(): Promise<void> {
             },
         ];
 
-        let needsSync = false;
+        // Track per-file actions needed for the outro message
+        const toPush: string[] = [];
+        const toPull: string[] = [];
+        const toResolve: string[] = [];
 
         for (const file of files) {
             const localExists = await fs.pathExists(file.localPath);
@@ -200,7 +203,7 @@ export async function syncStatus(): Promise<void> {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.green('local only')} — not pushed yet`,
                 );
-                needsSync = true;
+                toPush.push(file.label);
                 continue;
             }
 
@@ -208,7 +211,7 @@ export async function syncStatus(): Promise<void> {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.cyan('remote only')} — not pulled yet`,
                 );
-                needsSync = true;
+                toPull.push(file.label);
                 continue;
             }
 
@@ -230,20 +233,35 @@ export async function syncStatus(): Promise<void> {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.green('local ahead')} — modified ${color.dim(localMtime.toLocaleString())}`,
                 );
+                toPush.push(file.label);
             } else if (remoteChanged && !localChanged) {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.cyan('remote ahead')} — modified ${color.dim(remoteMtime.toLocaleString())}`,
                 );
+                toPull.push(file.label);
             } else {
                 p.log.warn(
                     `${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`,
                 );
+                toResolve.push(file.label);
             }
-            needsSync = true;
         }
 
+        const singleAction = [toPush, toPull, toResolve].filter(a => a.length > 0).length === 1;
+        const needsSync = toPush.length > 0 || toPull.length > 0 || toResolve.length > 0;
+
         if (needsSync) {
-            p.outro(`Run ${color.cyan('zedx sync')} to resolve.`);
+            if (singleAction && toPush.length > 0) {
+                p.outro(
+                    `Run ${color.cyan('zedx sync')} to push ${toPush.map(l => color.bold(l)).join(', ')} to remote.`,
+                );
+            } else if (singleAction && toPull.length > 0) {
+                p.outro(
+                    `Run ${color.cyan('zedx sync')} to pull ${toPull.map(l => color.bold(l)).join(', ')} from remote.`,
+                );
+            } else {
+                p.outro(`Run ${color.cyan('zedx sync')} to resolve.`);
+            }
         } else {
             p.outro('Everything is in sync.');
         }
