@@ -54,10 +54,10 @@ Sync your Zed config across machines using a private GitHub repo as the source o
 zedx sync init
 ```
 
-Prompts for a GitHub repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The result is saved to `~/.config/zedx/config.json`. No files are synced yet.
+Prompts for a GitHub repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
-> Only `settings.json` is tracked. Extension sync is handled via the `auto_install_extensions` field within it, which Zed uses to automatically download and install extensions.
+> `settings.json` and `keymap.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
 
 **2. Run a sync**
 
@@ -80,7 +80,7 @@ zedx sync install    # Install and enable the daemon
 zedx sync uninstall  # Disable and remove the daemon
 ```
 
-Installs a file-watcher that triggers `zedx sync` automatically whenever `settings.json` is saved. Supported platforms:
+Installs a file-watcher that triggers `zedx sync` automatically whenever config files are saved. Supported platforms:
 
 | Platform | Mechanism                                              | Logs                                     |
 | -------- | ------------------------------------------------------ | ---------------------------------------- |
