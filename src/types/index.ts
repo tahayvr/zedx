@@ -6,9 +6,12 @@ export interface ZedPaths {
     extensionsIndex: string; // local-only: used to bootstrap auto_install_extensions, never synced
 }
 
+export type ConflictStrategy = 'local' | 'remote' | 'ask';
+
 export interface SyncConfig {
     syncRepo: string;
     branch: string;
+    conflictStrategy?: ConflictStrategy;
 }
 
 export type License =

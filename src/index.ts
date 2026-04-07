@@ -10,14 +10,14 @@ import color from 'picocolors';
 
 import { addTheme, addLanguage } from './add.js';
 import { runCheck } from './check.js';
-import { runConfig, configRepo } from './config.js';
+import { runConfig, configRepo, configConflict } from './config.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
 import { installDevExtension } from './install.js';
 import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
 import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus, syncSelect } from './sync.js';
-import type { ConflictStrategy } from './sync.js';
+import type { ConflictStrategy } from './types/index.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -93,6 +93,7 @@ function printWelcome(): void {
         ['zedx sync uninstall', 'Remove the auto-sync daemon'],
         ['zedx config', 'Configure zedx settings'],
         ['zedx config repo', 'Change your sync repo and branch'],
+        ['zedx config conflict', 'Set default conflict resolution strategy'],
     ];
 
     const extensionCommands: [string, string][] = [
@@ -230,11 +231,11 @@ async function main() {
                 p.log.error(color.red('--local and --remote are mutually exclusive.'));
                 process.exit(1);
             }
-            const conflict: ConflictStrategy = opts.local
+            const conflict: ConflictStrategy | undefined = opts.local
                 ? 'local'
                 : opts.remote
                   ? 'remote'
-                  : 'prompt';
+                  : undefined;
             await runSync({ conflict });
         });
 
@@ -285,6 +286,28 @@ async function main() {
         .description('Change your sync repo and branch')
         .action(async () => {
             await configRepo();
+        });
+
+    configCmd
+        .command('conflict')
+        .description('Set the default conflict resolution strategy for zedx sync')
+        .option('--ask', 'Set strategy to ask (interactive prompt)')
+        .option('--local', 'Set strategy to local (local always wins)')
+        .option('--remote', 'Set strategy to remote (remote always wins)')
+        .action(async (opts: { ask?: boolean; local?: boolean; remote?: boolean }) => {
+            const flags = [opts.ask, opts.local, opts.remote].filter(Boolean).length;
+            if (flags > 1) {
+                p.log.error(color.red('Only one of --ask, --local, --remote can be set.'));
+                process.exit(1);
+            }
+            const direct: ConflictStrategy | undefined = opts.ask
+                ? 'ask'
+                : opts.local
+                  ? 'local'
+                  : opts.remote
+                    ? 'remote'
+                    : undefined;
+            await configConflict(direct);
         });
 
     const argv = process.argv.filter(arg => arg !== '--');

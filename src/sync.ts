@@ -6,7 +6,7 @@ import fs from 'fs-extra';
 import color from 'picocolors';
 import simpleGit from 'simple-git';
 
-import type { SyncConfig } from './types/index.js';
+import type { SyncConfig, ConflictStrategy } from './types/index.js';
 import { resolveZedPaths } from './zed-paths.js';
 
 const ZEDX_CONFIG_DIR = path.join(os.homedir(), '.config', 'zedx');
@@ -68,7 +68,11 @@ async function reconcileAutoInstallExtensions(
     if (await fs.pathExists(localSettingsPath)) {
         try {
             const raw = await fs.readFile(localSettingsPath, 'utf-8');
-            settingsObj = JSON.parse(raw.replace(/\/\/[^\n]*/g, ''));
+            const stripped = raw
+                .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+                .replace(/\/\/[^\n]*/g, '') // line comments
+                .replace(/,(\s*[}\]])/g, '$1'); // trailing commas
+            settingsObj = JSON.parse(stripped);
         } catch {
             if (!silent)
                 p.log.warn(
@@ -318,6 +322,7 @@ export async function syncInit(): Promise<void> {
     const config: PersistedConfig = {
         syncRepo: (repo as string).trim(),
         branch: ((branch as string) || 'main').trim(),
+        conflictStrategy: 'ask',
     };
 
     await writeSyncConfig(config);
@@ -328,7 +333,7 @@ export async function syncInit(): Promise<void> {
     );
 }
 
-export type ConflictStrategy = 'local' | 'remote' | 'prompt';
+export type { ConflictStrategy } from './types/index.js';
 
 // zedx sync select
 export async function syncSelect(): Promise<void> {
@@ -372,7 +377,12 @@ export async function syncSelect(): Promise<void> {
 export async function runSync(
     opts: { silent?: boolean; conflict?: ConflictStrategy; selectedFiles?: string[] } = {},
 ): Promise<void> {
-    const { silent = false, conflict = 'prompt', selectedFiles } = opts;
+    const { silent = false, selectedFiles } = opts;
+
+    const config = await requireSyncConfig();
+
+    // Conflict priority: explicit CLI flag > persisted config > default (ask)
+    const conflict: ConflictStrategy = opts.conflict ?? config.conflictStrategy ?? 'ask';
 
     // In silent mode (daemon/watch), route all UI through plain console.log
     // Interactive conflict prompts fall back to "local wins".
@@ -394,7 +404,6 @@ export async function runSync(
         p.intro(`${color.bgBlue(color.bold(' zedx sync '))} ${color.blue('Syncing Zed config…')}`);
     }
 
-    const config = await requireSyncConfig();
     const zedPaths = resolveZedPaths();
 
     // Spinner shim: in silent mode just log to stderr so daemons can capture it
@@ -494,11 +503,23 @@ export async function runSync(
                 continue;
             }
 
-            // Detect which side changed since last sync via mtime
+            // Use local mtime for local file, and the git commit timestamp for the
+            // remote file — the temp dir mtime is just when git checked it out, not
+            // when it was actually changed, so it can't be used for comparison.
             const localMtime = (await fs.stat(file.localPath)).mtime;
-            const remoteMtime = remoteFileExists
-                ? (await fs.stat(file.repoPath)).mtime
-                : new Date(0);
+            let remoteMtime = new Date(0);
+            if (remoteExists) {
+                try {
+                    const gitLog = await git.log({
+                        file: path.basename(file.repoPath),
+                        maxCount: 1,
+                        format: { date: '%cI' },
+                    });
+                    if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
+                } catch {
+                    // fall back to epoch — remote will appear unchanged
+                }
+            }
 
             const localChanged = !lastSync || localMtime > lastSync;
             const remoteChanged = !lastSync || remoteMtime > lastSync;
@@ -568,7 +589,7 @@ export async function runSync(
                 }
 
                 if (resolution === 'local') {
-                    if (!silent && conflict === 'prompt')
+                    if (!silent && conflict === 'ask')
                         p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
                     await reconcileAutoInstallExtensions(
                         file.localPath,
@@ -579,7 +600,7 @@ export async function runSync(
                     await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                     anyChanges = true;
                 } else {
-                    if (!silent && conflict === 'prompt')
+                    if (!silent && conflict === 'ask')
                         p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
                     await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
                     if (!silent)
