@@ -68,7 +68,7 @@ export async function runCheck(callerDir: string): Promise<void> {
         extIssues.push({
             file: 'extension.toml',
             message: 'repository still uses the default placeholder URL',
-            hint: 'Set it to your actual GitHub repository URL',
+            hint: 'Set it to your actual Git repository URL',
         });
     }
 

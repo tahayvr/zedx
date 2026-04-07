@@ -83,7 +83,16 @@ function printWelcome(): void {
     console.log('\n' + color.cyan(color.bold(ascii)) + '\n');
     console.log(color.bold('  The CLI toolkit for Zed Editor') + '\n');
 
-    const commands = [
+    const syncCommands: [string, string][] = [
+        ['zedx sync', 'Sync Zed settings via a git repo'],
+        ['zedx sync init', 'Link a git repo as the sync target'],
+        ['zedx sync select', 'Choose which files to sync interactively'],
+        ['zedx sync status', 'Show sync state between local and remote'],
+        ['zedx sync install', 'Install the OS daemon for auto-sync'],
+        ['zedx sync uninstall', 'Remove the auto-sync daemon'],
+    ];
+
+    const extensionCommands: [string, string][] = [
         ['zedx create', 'Scaffold a new Zed extension'],
         ['zedx add theme <name>', 'Add a theme to an existing extension'],
         ['zedx add language <id>', 'Add a language to an existing extension'],
@@ -91,21 +100,22 @@ function printWelcome(): void {
         ['zedx check', 'Validate your extension config'],
         ['zedx install', 'Install as a Zed dev extension'],
         ['zedx version <major|minor|patch>', 'Bump extension version'],
-        ['zedx sync', 'Sync Zed settings via a git repo'],
-        ['zedx sync select', 'Choose which files to sync interactively'],
-        ['zedx sync init', 'Link a git repo as the sync target'],
-        ['zedx sync status', 'Show sync state between local and remote'],
-        ['zedx sync install', 'Install the OS daemon for auto-sync'],
-        ['zedx sync uninstall', 'Remove the auto-sync daemon'],
     ];
 
-    console.log(color.dim('  Commands:\n'));
-    for (const [cmd, desc] of commands) {
-        console.log(`  ${color.cyan(cmd.padEnd(38))}${color.dim(desc)}`);
+    const pad = 38;
+
+    console.log(`  ${color.bold('Sync')}\n`);
+    for (const [cmd, desc] of syncCommands) {
+        console.log(`  ${color.cyan(cmd.padEnd(pad))}${color.dim(desc)}`);
+    }
+
+    console.log(`\n  ${color.bold('Extensions')}\n`);
+    for (const [cmd, desc] of extensionCommands) {
+        console.log(`  ${color.cyan(cmd.padEnd(pad))}${color.dim(desc)}`);
     }
 
     console.log(
-        `\n  ${color.dim('Zed Docs:')} ${color.underline(color.blue('https://zed.dev/docs/extensions'))}\n`,
+        `\n  ${color.dim('Zedx Repo:')} ${color.underline(color.blue('https://github.com/tahayvr/zedx'))}\n`,
     );
 }
 
@@ -209,7 +219,7 @@ async function main() {
 
     const syncCmd = program
         .command('sync')
-        .description('Sync Zed settings and extensions via a GitHub repo')
+        .description('Sync Zed settings and extensions via a Git repo')
         .option('--local', 'On conflict, always keep the local version')
         .option('--remote', 'On conflict, always use the remote version')
         .action(async (opts: { local?: boolean; remote?: boolean }) => {
@@ -227,7 +237,7 @@ async function main() {
 
     syncCmd
         .command('init')
-        .description('Link a GitHub repo as the sync target')
+        .description('Link a Git repo as the sync target')
         .action(async () => {
             await syncInit();
         });

@@ -46,7 +46,7 @@ zedx check
 
 ### Sync
 
-Sync your Zed config across machines using a private GitHub repo as the source of truth.
+Sync your Zed config across machines using a private Git repo as the source of truth.
 
 **1. Link a repo (one-time setup)**
 
@@ -54,7 +54,7 @@ Sync your Zed config across machines using a private GitHub repo as the source o
 zedx sync init
 ```
 
-Prompts for a GitHub repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
+Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
 > `settings.json` and `keymap.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.

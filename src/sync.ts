@@ -276,7 +276,7 @@ export async function syncInit(): Promise<void> {
     );
 
     const repo = await p.text({
-        message: 'GitHub repo URL (SSH or HTTPS)',
+        message: 'Git repo URL (SSH or HTTPS)',
         placeholder: 'https://github.com/you/zed-config.git',
         validate: v => {
             if (!v.trim()) return 'Repo URL is required';
