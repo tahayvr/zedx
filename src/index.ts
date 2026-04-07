@@ -10,6 +10,7 @@ import color from 'picocolors';
 
 import { addTheme, addLanguage } from './add.js';
 import { runCheck } from './check.js';
+import { runConfig, configRepo } from './config.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
 import { installDevExtension } from './install.js';
@@ -90,6 +91,8 @@ function printWelcome(): void {
         ['zedx sync status', 'Show sync state between local and remote'],
         ['zedx sync install', 'Install the OS daemon for auto-sync'],
         ['zedx sync uninstall', 'Remove the auto-sync daemon'],
+        ['zedx config', 'Configure zedx settings'],
+        ['zedx config repo', 'Change your sync repo and branch'],
     ];
 
     const extensionCommands: [string, string][] = [
@@ -219,7 +222,7 @@ async function main() {
 
     const syncCmd = program
         .command('sync')
-        .description('Sync Zed settings and extensions via a Git repo')
+        .description('Sync your Zed configs via a Git repo')
         .option('--local', 'On conflict, always keep the local version')
         .option('--remote', 'On conflict, always use the remote version')
         .action(async (opts: { local?: boolean; remote?: boolean }) => {
@@ -268,6 +271,20 @@ async function main() {
         .description('Remove the OS daemon')
         .action(async () => {
             await syncUninstall();
+        });
+
+    const configCmd = program
+        .command('config')
+        .description('Configure zedx settings')
+        .action(async () => {
+            await runConfig();
+        });
+
+    configCmd
+        .command('repo')
+        .description('Change your sync repo and branch')
+        .action(async () => {
+            await configRepo();
         });
 
     const argv = process.argv.filter(arg => arg !== '--');

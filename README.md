@@ -89,6 +89,13 @@ Installs a file-watcher that triggers `zedx sync` automatically whenever config 
 
 The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. When a conflict is detected in daemon mode (no TTY), local always wins and a warning is logged.
 
+### Config
+
+```bash
+zedx config           # Open interactive config menu
+zedx config repo      # Change your sync repo and branch directly
+```
+
 ### Versioning
 
 Bump the extension version:
