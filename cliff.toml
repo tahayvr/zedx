@@ -1,12 +1,50 @@
 [changelog]
-header = ""
+header = """
+# Changelog\n
+All notable changes to this project will be documented in this file.\n
+"""
 body = """
-{% for group, commits in commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
-{% for commit in commits %}
-- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by @{{ commit.author.username | default(value=commit.author.name) }}
+## {{ version | default(value="Unreleased") }}
+
+{% set features = commits | filter(attribute="group", value="Features") %}
+{% if features %}
+### Features
+{% for commit in features %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by {% if commit.remote.username %}@{{ commit.remote.username }}{% else %}{{ commit.author.name }}{% endif %}
 {% endfor %}
+{% endif %}
+
+{% set bug_fixes = commits | filter(attribute="group", value="Bug Fixes") %}
+{% if bug_fixes %}
+### Bug Fixes
+{% for commit in bug_fixes %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by {% if commit.remote.username %}@{{ commit.remote.username }}{% else %}{{ commit.author.name }}{% endif %}
 {% endfor %}
+{% endif %}
+
+{% set performance = commits | filter(attribute="group", value="Performance") %}
+{% if performance %}
+### Performance
+{% for commit in performance %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by {% if commit.remote.username %}@{{ commit.remote.username }}{% else %}{{ commit.author.name }}{% endif %}
+{% endfor %}
+{% endif %}
+
+{% set refactoring = commits | filter(attribute="group", value="Refactoring") %}
+{% if refactoring %}
+### Refactoring
+{% for commit in refactoring %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by {% if commit.remote.username %}@{{ commit.remote.username }}{% else %}{{ commit.author.name }}{% endif %}
+{% endfor %}
+{% endif %}
+
+{% set documentation = commits | filter(attribute="group", value="Documentation") %}
+{% if documentation %}
+### Documentation
+{% for commit in documentation %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} [**breaking**]{% endif %} — by {% if commit.remote.username %}@{{ commit.remote.username }}{% else %}{{ commit.author.name }}{% endif %}
+{% endfor %}
+{% endif %}
 """
 trim = true
 footer = ""
@@ -15,19 +53,23 @@ footer = ""
 conventional_commits = true
 filter_unconventional = true
 split_commits = false
+commit_preprocessors = [
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/tahayvr/zedx/issues/${2}))" },
+]
 commit_parsers = [
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Bug Fixes" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^refactor", group = "Refactoring" },
     { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^docs", group = "Documentation" },
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
     { message = "^style", skip = true },
     { message = "^test", skip = true },
 ]
+protect_breaking_commits = false
 filter_commits = false
-tag_pattern = "v[0-9].*"
+tag_pattern = "v[0-9]*"
 skip_tags = ""
 ignore_tags = ""
 topo_order = false
