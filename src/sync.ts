@@ -327,12 +327,14 @@ export async function syncInit(): Promise<void> {
 
     try {
         const git = simpleGit();
-        await git.listRemote(['--heads', repo as string]);
+        await Promise.race([
+            git.listRemote(['--heads', repo as string]),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
         spinner.stop('Repo verified.');
     } catch {
-        spinner.stop(
-            color.yellow('Could not verify repo (may be empty or private — continuing anyway).'),
-        );
+        spinner.stop(color.red('Could not reach repo. Check the URL and your credentials.'));
+        process.exit(1);
     }
 
     const config: PersistedConfig = {
