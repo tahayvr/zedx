@@ -19,31 +19,6 @@ brew install tahayvr/tap/zedx
 
 ## Usage
 
-### Scaffolding an extension
-
-```bash
-# Create a new extension
-zedx create
-
-# Add a theme or language to an existing extension
-zedx add theme "Midnight Blue"
-zedx add language rust
-```
-
-### Supported extension types:
-
-1. **Themes** - Color schemes for the editor
-2. **Languages** - Syntax highlighting, indentation, and optional LSP support
-
-You can choose to include theme, language, or both when creating an extension.
-
-### Validation
-
-```bash
-# Validate extension config and show what is missing or incomplete
-zedx check
-```
-
 ### Sync
 
 Sync your Zed config across machines using a private Git repo as the source of truth.
@@ -57,7 +32,7 @@ zedx sync init
 Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
-> `settings.json` and `keymap.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
+> `settings.json` and `keymap.json` and `tasks.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
 
 **2. Run a sync**
 
@@ -88,6 +63,31 @@ Installs a file-watcher that triggers `zedx sync` automatically whenever config 
 | Linux    | systemd user units (`~/.config/systemd/user/`)         | `journalctl --user -u zedx-sync.service` |
 
 The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. When a conflict is detected in daemon mode (no TTY), local always wins and a warning is logged.
+
+### Scaffolding an extension
+
+```bash
+# Create a new extension
+zedx create
+
+# Add a theme or language to an existing extension
+zedx add theme "Midnight Blue"
+zedx add language rust
+```
+
+### Supported extension types:
+
+1. **Themes** - Color schemes for the editor
+2. **Languages** - Syntax highlighting, indentation, and optional LSP support
+
+You can choose to include theme, language, or both when creating an extension.
+
+### Validation
+
+```bash
+# Validate extension config and show what is missing or incomplete
+zedx check
+```
 
 ### Configuration
 

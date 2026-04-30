@@ -12,6 +12,7 @@ export function resolveZedPaths(): ZedPaths {
         return {
             settings: path.join(configDir, 'settings.json'),
             keymap: path.join(configDir, 'keymap.json'),
+            tasks: path.join(configDir, 'tasks.json'),
             extensionsIndex: path.join(
                 home,
                 'Library',
@@ -33,6 +34,7 @@ export function resolveZedPaths(): ZedPaths {
         return {
             settings: path.join(configDir, 'settings.json'),
             keymap: path.join(configDir, 'keymap.json'),
+            tasks: path.join(configDir, 'tasks.json'),
             extensionsIndex: path.join(xdgData, 'zed', 'extensions', 'index.json'),
         };
     }
@@ -45,6 +47,7 @@ export function resolveZedPaths(): ZedPaths {
         return {
             settings: path.join(configDir, 'settings.json'),
             keymap: path.join(configDir, 'keymap.json'),
+            tasks: path.join(configDir, 'tasks.json'),
             extensionsIndex: path.join(localAppData, 'Zed', 'extensions', 'index.json'),
         };
     }

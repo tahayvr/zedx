@@ -187,6 +187,11 @@ export async function syncStatus(): Promise<void> {
                 localPath: zedPaths.keymap,
                 label: 'Key bindings',
             },
+            {
+                repoPath: path.join(tmp, 'tasks.json'),
+                localPath: zedPaths.tasks,
+                label: 'Tasks',
+            },
         ];
 
         // Track per-file actions needed for the outro message
@@ -366,6 +371,11 @@ export async function syncSelect(): Promise<void> {
             label: 'Key bindings',
             hint: 'keymap.json',
         },
+        {
+            value: 'tasks',
+            label: 'Tasks',
+            hint: 'tasks.json',
+        },
     ];
 
     const selected = await p.multiselect({
@@ -457,6 +467,12 @@ export async function runSync(
                     repoPath: path.join(tmp, 'keymap.json'),
                     localPath: zedPaths.keymap,
                     label: 'Key bindings',
+                },
+                {
+                    key: 'tasks',
+                    repoPath: path.join(tmp, 'tasks.json'),
+                    localPath: zedPaths.tasks,
+                    label: 'Tasks',
                 },
             ];
 
