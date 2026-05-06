@@ -1,10 +1,8 @@
-<div align="center">
+<p align="center">
+<img align="center" src="./assets/zedx-logo.png" width="300" alt="ZedX Logo" />
+</p>
 
-<img src="./assets/zedx-logo.png" width="300" alt="ZedX Logo" />
-
-CLI toolkit for Scaffolding [Zed Editor](https://zed.dev/) extensions and syncing settings across machines.
-
-</div>
+<p align="center"> CLI toolkit for the Zed Editor</p>
 
 ![screenshot](./assets/screenshot1.png)
 
