@@ -65,10 +65,10 @@ ${watchEntries}
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>${os.homedir()}/Library/Logs/zedx-sync.log</string>
+    <string>${os.homedir()}/Library/Logs/zedx/sync.log</string>
 
     <key>StandardErrorPath</key>
-    <string>${os.homedir()}/Library/Logs/zedx-sync.log</string>
+    <string>${os.homedir()}/Library/Logs/zedx/sync.log</string>
 </dict>
 </plist>
 `;
@@ -78,6 +78,7 @@ async function installMacos(zedxBin: string, watchPaths: string[]): Promise<void
     const plist = buildPlist(zedxBin, watchPaths);
 
     await fs.ensureDir(path.dirname(LAUNCHD_PLIST_PATH));
+    await fs.ensureDir(path.join(os.homedir(), 'Library', 'Logs', 'zedx'));
     await fs.writeFile(LAUNCHD_PLIST_PATH, plist, 'utf-8');
 
     try {
@@ -89,7 +90,7 @@ async function installMacos(zedxBin: string, watchPaths: string[]): Promise<void
     execSync(`launchctl load "${LAUNCHD_PLIST_PATH}"`);
 
     p.log.success(`Daemon installed: ${color.dim(LAUNCHD_PLIST_PATH)}`);
-    p.log.info(`Logs: ${color.dim(`${os.homedir()}/Library/Logs/zedx-sync.log`)}`);
+    p.log.info(`Logs: ${color.dim(`${os.homedir()}/Library/Logs/zedx/sync.log`)}`);
     p.log.info(`To check status: ${color.cyan(`launchctl list ${LAUNCHD_LABEL}`)}`);
 }
 
