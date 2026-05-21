@@ -3,6 +3,7 @@ import path from 'path';
 
 import * as p from '@clack/prompts';
 import fs from 'fs-extra';
+import { applyEdits, modify, parse, type FormattingOptions, type ParseError } from 'jsonc-parser';
 import color from 'picocolors';
 import simpleGit from 'simple-git';
 
@@ -52,37 +53,43 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     }
 }
 
-// Before every push, reconcile auto_install_extensions in settings.json against
-// the live extensions/index.json so that:
+// Detect indentation from a JSONC source so edits match the surrounding file.
+// Falls back to two-space indent (Zed's default for settings.json).
+export function detectIndent(src: string): FormattingOptions {
+    const match = src.match(/^([ \t]+)\S/m);
+    if (!match) return { insertSpaces: true, tabSize: 2 };
+    const ws = match[1];
+    if (ws.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
+    return { insertSpaces: true, tabSize: ws.length };
+}
+
+// Reconcile auto_install_extensions in settings.json against the live
+// extensions/index.json so that:
 //   - newly installed extensions (present in index, missing from the list) are added as true
 //   - uninstalled extensions (absent from index, set to true in the list) are removed
 //   - entries explicitly set to false by the user are always preserved (user intent)
-async function reconcileAutoInstallExtensions(
+//
+// Uses jsonc-parser to edit in place, so existing comments and formatting in
+// settings.json are preserved across reconciles.
+export async function reconcileAutoInstallExtensions(
     localSettingsPath: string,
     localExtensionsIndexPath: string,
     silent = false,
 ): Promise<void> {
     if (!(await fs.pathExists(localExtensionsIndexPath))) return;
+    if (!(await fs.pathExists(localSettingsPath))) return;
 
-    let settingsObj: Record<string, unknown> = {};
-    if (await fs.pathExists(localSettingsPath)) {
-        try {
-            const raw = await fs.readFile(localSettingsPath, 'utf-8');
-            const stripped = raw
-                .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-                .replace(/\/\/[^\n]*/g, '') // line comments
-                .replace(/,(\s*[}\]])/g, '$1'); // trailing commas
-            settingsObj = JSON.parse(stripped);
-        } catch {
-            if (!silent)
-                p.log.warn(
-                    color.yellow(
-                        'Could not parse settings.json — skipping extension reconciliation.',
-                    ),
-                );
-            return;
-        }
+    const raw = await fs.readFile(localSettingsPath, 'utf-8');
+    const errors: ParseError[] = [];
+    const parsed = parse(raw, errors, { allowTrailingComma: true, allowEmptyContent: true });
+    if (errors.length > 0 || (parsed !== undefined && typeof parsed !== 'object')) {
+        if (!silent)
+            p.log.warn(
+                color.yellow('Could not parse settings.json — skipping extension reconciliation.'),
+            );
+        return;
     }
+    const settingsObj = (parsed ?? {}) as Record<string, unknown>;
 
     let installedIds: string[] = [];
     try {
@@ -119,8 +126,6 @@ async function reconcileAutoInstallExtensions(
     for (const id of installedIds) {
         reconciled[id] = true;
     }
-    // Drop true entries for extensions no longer installed
-    // (already handled — we only re-add what's in installedSet above)
 
     const added = installedIds.filter(id => !(id in existing));
     const removed = Object.keys(existing).filter(
@@ -129,9 +134,12 @@ async function reconcileAutoInstallExtensions(
 
     if (added.length === 0 && removed.length === 0) return;
 
-    settingsObj['auto_install_extensions'] = reconciled;
+    const formattingOptions = detectIndent(raw);
+    const edits = modify(raw, ['auto_install_extensions'], reconciled, { formattingOptions });
+    const next = applyEdits(raw, edits);
+
     await fs.ensureDir(path.dirname(localSettingsPath));
-    await fs.writeFile(localSettingsPath, JSON.stringify(settingsObj, null, 4), 'utf-8');
+    await fs.writeFile(localSettingsPath, next, 'utf-8');
 
     if (!silent) {
         if (added.length > 0)
@@ -488,6 +496,21 @@ export async function runSync(
             const localExists = await fs.pathExists(file.localPath);
             const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
 
+            // Reconcile auto_install_extensions before content comparison so newly
+            // installed/uninstalled extensions show up as drift and follow the normal
+            // push path, rather than being swallowed by the "already in sync" check.
+            // Gated on the extensions index mtime so most syncs skip the parse entirely.
+            if (file.key === 'settings' && localExists) {
+                const indexStat = await fs.stat(zedPaths.extensionsIndex).catch(() => null);
+                if (!lastSync || (indexStat && indexStat.mtime > lastSync)) {
+                    await reconcileAutoInstallExtensions(
+                        file.localPath,
+                        zedPaths.extensionsIndex,
+                        silent,
+                    );
+                }
+            }
+
             // Both missing — skip
             if (!localExists && !remoteFileExists) {
                 log.warn(`${file.label}: not found locally or remotely — skipping.`);
@@ -495,15 +518,8 @@ export async function runSync(
             }
 
             // Remote doesn't have it yet — first push.
-            // Bootstrap auto_install_extensions from local extensions/index.json so
-            // the synced settings.json is self-contained on a fresh machine.
             if (localExists && !remoteFileExists) {
                 log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
-                await reconcileAutoInstallExtensions(
-                    file.localPath,
-                    zedPaths.extensionsIndex,
-                    silent,
-                );
                 await fs.ensureDir(path.dirname(file.repoPath));
                 await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                 anyChanges = true;
@@ -554,13 +570,8 @@ export async function runSync(
             const remoteChanged = !lastSync || remoteMtime > lastSync;
 
             if (localChanged && !remoteChanged) {
-                // Only local changed → reconcile extensions then push
+                // Only local changed → push
                 log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
-                await reconcileAutoInstallExtensions(
-                    file.localPath,
-                    zedPaths.extensionsIndex,
-                    silent,
-                );
                 await fs.ensureDir(path.dirname(file.repoPath));
                 await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                 anyChanges = true;
@@ -620,11 +631,6 @@ export async function runSync(
                 if (resolution === 'local') {
                     if (!silent && conflict === 'ask')
                         p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                    await reconcileAutoInstallExtensions(
-                        file.localPath,
-                        zedPaths.extensionsIndex,
-                        silent,
-                    );
                     await fs.ensureDir(path.dirname(file.repoPath));
                     await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                     anyChanges = true;
