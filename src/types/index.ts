@@ -4,6 +4,7 @@ export interface ZedPaths {
     settings: string;
     keymap: string;
     tasks: string;
+    snippetsDir: string; // directory of per-language *.json snippet files
     extensionsIndex: string; // local-only: used to bootstrap auto_install_extensions, never synced
 }
 

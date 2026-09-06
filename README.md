@@ -30,7 +30,7 @@ zedx sync init
 Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
-> `settings.json` and `keymap.json` and `tasks.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
+> `settings.json`, `keymap.json`, `tasks.json`, and `snippets/*.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
 
 **2. Run a sync**
 

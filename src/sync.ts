@@ -53,6 +53,49 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     }
 }
 
+// A single trackable file in the sync loop — either one of the fixed
+// settings/keymap/tasks files, or one dynamically discovered snippet file.
+export interface SyncFileEntry {
+    key: string;
+    repoPath: string;
+    localPath: string;
+    label: string;
+}
+
+// List *.json filenames directly inside a directory (empty if the directory
+// doesn't exist). Used to discover snippet files, which — unlike
+// settings/keymap/tasks — aren't a fixed, known set of names.
+async function listJsonFiles(dir: string): Promise<string[]> {
+    if (!(await fs.pathExists(dir))) return [];
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    return entries
+        .filter(e => e.isFile() && e.name.endsWith('.json'))
+        .map(e => e.name)
+        .sort();
+}
+
+// Build one SyncFileEntry per snippet filename present on either side.
+// Snippets live as an arbitrarily-named collection of per-language files
+// (~/.config/zed/snippets/*.json) rather than one fixed file, so the entry
+// list has to be discovered from disk instead of being hardcoded.
+export async function buildSnippetFileEntries(
+    localSnippetsDir: string,
+    remoteSnippetsDir: string,
+): Promise<SyncFileEntry[]> {
+    const [localFiles, remoteFiles] = await Promise.all([
+        listJsonFiles(localSnippetsDir),
+        listJsonFiles(remoteSnippetsDir),
+    ]);
+    const names = [...new Set([...localFiles, ...remoteFiles])].sort();
+
+    return names.map(name => ({
+        key: `snippet:${name}`,
+        repoPath: path.join(remoteSnippetsDir, name),
+        localPath: path.join(localSnippetsDir, name),
+        label: `Snippet: ${name}`,
+    }));
+}
+
 // Detect indentation from a JSONC source so edits match the surrounding file.
 // Falls back to two-space indent (Zed's default for settings.json).
 export function detectIndent(src: string): FormattingOptions {
@@ -236,7 +279,12 @@ export async function syncStatus(): Promise<void> {
             spinner.stop(color.yellow('Remote is empty or branch not found.'));
         }
 
-        const files: Array<{ key: string; repoPath: string; localPath: string; label: string }> = [
+        const snippetEntries = await buildSnippetFileEntries(
+            zedPaths.snippetsDir,
+            path.join(tmp, 'snippets'),
+        );
+
+        const files: SyncFileEntry[] = [
             {
                 key: 'settings',
                 repoPath: path.join(tmp, 'settings.json'),
@@ -255,6 +303,7 @@ export async function syncStatus(): Promise<void> {
                 localPath: zedPaths.tasks,
                 label: 'Tasks',
             },
+            ...snippetEntries,
         ];
 
         const lastSync = config.lastSync ? new Date(config.lastSync) : null;
@@ -301,7 +350,7 @@ export async function syncStatus(): Promise<void> {
                         try {
                             const git = simpleGit(tmp);
                             const gitLog = await git.log({
-                                file: path.basename(file.repoPath),
+                                file: path.relative(tmp, file.repoPath),
                                 maxCount: 1,
                                 format: { date: '%cI' },
                             });
@@ -484,6 +533,11 @@ export async function syncSelect(): Promise<void> {
             label: 'Tasks',
             hint: 'tasks.json',
         },
+        {
+            value: 'snippets',
+            label: 'Snippets',
+            hint: 'snippets/*.json',
+        },
     ];
 
     const selected = await p.multiselect({
@@ -562,30 +616,39 @@ export async function runSync(
         // 2. Determine what changed for each file
         const lastSync = config.lastSync ? new Date(config.lastSync) : null;
 
-        const allFiles: Array<{ repoPath: string; localPath: string; label: string; key: string }> =
-            [
-                {
-                    key: 'settings',
-                    repoPath: path.join(tmp, 'settings.json'),
-                    localPath: zedPaths.settings,
-                    label: 'Settings',
-                },
-                {
-                    key: 'keymap',
-                    repoPath: path.join(tmp, 'keymap.json'),
-                    localPath: zedPaths.keymap,
-                    label: 'Key bindings',
-                },
-                {
-                    key: 'tasks',
-                    repoPath: path.join(tmp, 'tasks.json'),
-                    localPath: zedPaths.tasks,
-                    label: 'Tasks',
-                },
-            ];
+        const snippetEntries = await buildSnippetFileEntries(
+            zedPaths.snippetsDir,
+            path.join(tmp, 'snippets'),
+        );
+
+        const allFiles: SyncFileEntry[] = [
+            {
+                key: 'settings',
+                repoPath: path.join(tmp, 'settings.json'),
+                localPath: zedPaths.settings,
+                label: 'Settings',
+            },
+            {
+                key: 'keymap',
+                repoPath: path.join(tmp, 'keymap.json'),
+                localPath: zedPaths.keymap,
+                label: 'Key bindings',
+            },
+            {
+                key: 'tasks',
+                repoPath: path.join(tmp, 'tasks.json'),
+                localPath: zedPaths.tasks,
+                label: 'Tasks',
+            },
+            ...snippetEntries,
+        ];
 
         const files = selectedFiles
-            ? allFiles.filter(f => selectedFiles.includes(f.key))
+            ? allFiles.filter(
+                  f =>
+                      selectedFiles.includes(f.key) ||
+                      (f.key.startsWith('snippet:') && selectedFiles.includes('snippets')),
+              )
             : allFiles;
 
         let anyChanges = false;
@@ -629,7 +692,7 @@ export async function runSync(
                     if (remoteExists) {
                         try {
                             const gitLog = await git.log({
-                                file: path.basename(file.repoPath),
+                                file: path.relative(tmp, file.repoPath),
                                 maxCount: 1,
                                 format: { date: '%cI' },
                             });
@@ -765,7 +828,8 @@ export async function runSync(
                 // matches nothing.
                 const stageable: string[] = [];
                 for (const f of files) {
-                    if (await fs.pathExists(f.repoPath)) stageable.push(path.basename(f.repoPath));
+                    if (await fs.pathExists(f.repoPath))
+                        stageable.push(path.relative(tmp, f.repoPath));
                 }
                 if (stageable.length > 0) await git.add(stageable);
 

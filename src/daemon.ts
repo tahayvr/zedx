@@ -189,7 +189,17 @@ export async function syncInstall(): Promise<void> {
     if (platform !== 'darwin' && platform !== 'linux') unsupportedPlatform();
 
     const zedPaths = resolveZedPaths();
-    const watchPaths = [zedPaths.settings, zedPaths.keymap, zedPaths.tasks];
+    // Snippets are watched as a directory rather than individual files, since
+    // the set of snippet filenames isn't fixed. Note this only reliably
+    // catches files being added/removed/renamed — editing an existing
+    // snippet's contents may not always bump the directory's own mtime,
+    // depending on the OS/filesystem. Users can still run `zedx sync`
+    // manually to pick up in-place edits immediately.
+    const watchPaths = [zedPaths.settings, zedPaths.keymap, zedPaths.tasks, zedPaths.snippetsDir];
+    // launchd/systemd path watchers only reliably register on paths that
+    // already exist, and a user with no snippets yet won't have this
+    // directory created by Zed until they add one.
+    await fs.ensureDir(zedPaths.snippetsDir);
     const zedxBin = resolveZedxBinary();
 
     p.log.info(`Binary:  ${color.dim(zedxBin)}`);

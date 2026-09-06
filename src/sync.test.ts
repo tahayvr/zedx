@@ -5,6 +5,7 @@ import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+    buildSnippetFileEntries,
     decideFileSync,
     detectIndent,
     reconcileAutoInstallExtensions,
@@ -294,5 +295,80 @@ describe('resolveConflictStrategy', () => {
 
     it('defers to an interactive prompt when not silent and strategy is ask', () => {
         expect(resolveConflictStrategy('ask', false)).toBe('ask');
+    });
+});
+
+describe('buildSnippetFileEntries', () => {
+    let tmp: string;
+    let localDir: string;
+    let remoteDir: string;
+
+    beforeEach(async () => {
+        tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'zedx-snippets-test-'));
+        localDir = path.join(tmp, 'local-snippets');
+        remoteDir = path.join(tmp, 'remote-snippets');
+    });
+
+    afterEach(async () => {
+        await fs.remove(tmp);
+    });
+
+    it('returns an empty list when neither directory exists', async () => {
+        expect(await buildSnippetFileEntries(localDir, remoteDir)).toEqual([]);
+    });
+
+    it('includes files present only locally', async () => {
+        await fs.ensureDir(localDir);
+        await fs.writeFile(path.join(localDir, 'python.json'), '{}');
+
+        const entries = await buildSnippetFileEntries(localDir, remoteDir);
+
+        expect(entries).toEqual([
+            {
+                key: 'snippet:python.json',
+                repoPath: path.join(remoteDir, 'python.json'),
+                localPath: path.join(localDir, 'python.json'),
+                label: 'Snippet: python.json',
+            },
+        ]);
+    });
+
+    it('includes files present only remotely', async () => {
+        await fs.ensureDir(remoteDir);
+        await fs.writeFile(path.join(remoteDir, 'rust.json'), '{}');
+
+        const entries = await buildSnippetFileEntries(localDir, remoteDir);
+
+        expect(entries).toEqual([
+            {
+                key: 'snippet:rust.json',
+                repoPath: path.join(remoteDir, 'rust.json'),
+                localPath: path.join(localDir, 'rust.json'),
+                label: 'Snippet: rust.json',
+            },
+        ]);
+    });
+
+    it('deduplicates files present on both sides and sorts by filename', async () => {
+        await fs.ensureDir(localDir);
+        await fs.ensureDir(remoteDir);
+        await fs.writeFile(path.join(localDir, 'python.json'), '{}');
+        await fs.writeFile(path.join(remoteDir, 'python.json'), '{}');
+        await fs.writeFile(path.join(localDir, 'javascript.json'), '{}');
+
+        const entries = await buildSnippetFileEntries(localDir, remoteDir);
+
+        expect(entries.map(e => e.key)).toEqual(['snippet:javascript.json', 'snippet:python.json']);
+    });
+
+    it('ignores non-json files and subdirectories', async () => {
+        await fs.ensureDir(localDir);
+        await fs.writeFile(path.join(localDir, 'python.json'), '{}');
+        await fs.writeFile(path.join(localDir, 'README.md'), 'notes');
+        await fs.ensureDir(path.join(localDir, 'nested'));
+
+        const entries = await buildSnippetFileEntries(localDir, remoteDir);
+
+        expect(entries.map(e => e.key)).toEqual(['snippet:python.json']);
     });
 });
