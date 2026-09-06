@@ -236,23 +236,28 @@ export async function syncStatus(): Promise<void> {
             spinner.stop(color.yellow('Remote is empty or branch not found.'));
         }
 
-        const files: Array<{ repoPath: string; localPath: string; label: string }> = [
+        const files: Array<{ key: string; repoPath: string; localPath: string; label: string }> = [
             {
+                key: 'settings',
                 repoPath: path.join(tmp, 'settings.json'),
                 localPath: zedPaths.settings,
                 label: 'Settings',
             },
             {
+                key: 'keymap',
                 repoPath: path.join(tmp, 'keymap.json'),
                 localPath: zedPaths.keymap,
                 label: 'Key bindings',
             },
             {
+                key: 'tasks',
                 repoPath: path.join(tmp, 'tasks.json'),
                 localPath: zedPaths.tasks,
                 label: 'Tasks',
             },
         ];
+
+        const lastSync = config.lastSync ? new Date(config.lastSync) : null;
 
         // Track per-file actions needed for the outro message
         const toPush: string[] = [];
@@ -263,56 +268,97 @@ export async function syncStatus(): Promise<void> {
             const localExists = await fs.pathExists(file.localPath);
             const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
 
-            if (!localExists && !remoteFileExists) {
-                p.log.warn(`${color.bold(file.label)}: not found locally or remotely`);
-                continue;
+            // Mirror runSync's reconcile-before-compare step so status reflects
+            // what an actual `zedx sync` would do, without mutating the real
+            // settings.json — reconcile a scratch copy instead.
+            let effectiveLocalPath = file.localPath;
+            if (file.key === 'settings' && localExists) {
+                const indexStat = await fs.stat(zedPaths.extensionsIndex).catch(() => null);
+                if (!lastSync || (indexStat && indexStat.mtime > lastSync)) {
+                    const scratchPath = path.join(tmp, '.status-settings-scratch.json');
+                    await fs.copy(file.localPath, scratchPath);
+                    await reconcileAutoInstallExtensions(
+                        scratchPath,
+                        zedPaths.extensionsIndex,
+                        true,
+                    );
+                    effectiveLocalPath = scratchPath;
+                }
             }
 
-            if (localExists && !remoteFileExists) {
-                p.log.warn(
-                    `${color.bold(file.label)}: ${color.green('local only')} — not pushed yet`,
-                );
-                toPush.push(file.label);
-                continue;
+            let contentsEqual = false;
+            let localMtime = new Date(0);
+            let remoteMtime = new Date(0);
+
+            if (localExists && remoteFileExists) {
+                const localContent = await fs.readFile(effectiveLocalPath, 'utf-8');
+                const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
+                contentsEqual = localContent === remoteContent;
+
+                if (!contentsEqual) {
+                    localMtime = (await fs.stat(effectiveLocalPath)).mtime;
+                    if (remoteExists) {
+                        try {
+                            const git = simpleGit(tmp);
+                            const gitLog = await git.log({
+                                file: path.basename(file.repoPath),
+                                maxCount: 1,
+                                format: { date: '%cI' },
+                            });
+                            if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
+                        } catch {
+                            // fall back to epoch — remote will appear unchanged
+                        }
+                    }
+                }
             }
 
-            if (!localExists && remoteFileExists) {
-                p.log.warn(
-                    `${color.bold(file.label)}: ${color.cyan('remote only')} — not pulled yet`,
-                );
-                toPull.push(file.label);
-                continue;
-            }
+            const decision = decideFileSync({
+                localExists,
+                remoteFileExists,
+                contentsEqual,
+                localMtime,
+                remoteMtime,
+                lastSync,
+            });
 
-            const localContent = await fs.readFile(file.localPath, 'utf-8');
-            const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
-
-            if (localContent === remoteContent) {
-                p.log.success(`${color.bold(file.label)}: in sync`);
-                continue;
-            }
-
-            const localMtime = (await fs.stat(file.localPath)).mtime;
-            const remoteMtime = (await fs.stat(file.repoPath)).mtime;
-            const lastSync = config.lastSync ? new Date(config.lastSync) : null;
-            const localChanged = !lastSync || localMtime > lastSync;
-            const remoteChanged = !lastSync || remoteMtime > lastSync;
-
-            if (localChanged && !remoteChanged) {
-                p.log.warn(
-                    `${color.bold(file.label)}: ${color.green('local ahead')} — modified ${color.dim(localMtime.toLocaleString())}`,
-                );
-                toPush.push(file.label);
-            } else if (remoteChanged && !localChanged) {
-                p.log.warn(
-                    `${color.bold(file.label)}: ${color.cyan('remote ahead')} — modified ${color.dim(remoteMtime.toLocaleString())}`,
-                );
-                toPull.push(file.label);
-            } else {
-                p.log.warn(
-                    `${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`,
-                );
-                toResolve.push(file.label);
+            switch (decision) {
+                case 'both-missing':
+                    p.log.warn(`${color.bold(file.label)}: not found locally or remotely`);
+                    break;
+                case 'push-new':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.green('local only')} — not pushed yet`,
+                    );
+                    toPush.push(file.label);
+                    break;
+                case 'pull-new':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.cyan('remote only')} — not pulled yet`,
+                    );
+                    toPull.push(file.label);
+                    break;
+                case 'in-sync':
+                    p.log.success(`${color.bold(file.label)}: in sync`);
+                    break;
+                case 'push-local-newer':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.green('local ahead')} — modified ${color.dim(localMtime.toLocaleString())}`,
+                    );
+                    toPush.push(file.label);
+                    break;
+                case 'pull-remote-newer':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.cyan('remote ahead')} — modified ${color.dim(remoteMtime.toLocaleString())}`,
+                    );
+                    toPull.push(file.label);
+                    break;
+                case 'conflict':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`,
+                    );
+                    toResolve.push(file.label);
+                    break;
             }
         }
 
@@ -713,7 +759,15 @@ export async function runSync(
         if (anyChanges) {
             spinner.start('Pushing changes to remote...');
             try {
-                await git.add(files.map(f => path.basename(f.repoPath)));
+                // Only stage files that were actually written to the temp repo —
+                // `files` includes every tracked key regardless of whether this
+                // sync touched it, and `git add` throws on a pathspec that
+                // matches nothing.
+                const stageable: string[] = [];
+                for (const f of files) {
+                    if (await fs.pathExists(f.repoPath)) stageable.push(path.basename(f.repoPath));
+                }
+                if (stageable.length > 0) await git.add(stageable);
 
                 const status = await git.status();
                 if (status.staged.length > 0) {
