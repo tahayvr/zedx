@@ -4,7 +4,12 @@ import path from 'path';
 import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { detectIndent, reconcileAutoInstallExtensions } from './sync.js';
+import {
+    decideFileSync,
+    detectIndent,
+    reconcileAutoInstallExtensions,
+    resolveConflictStrategy,
+} from './sync.js';
 
 describe('detectIndent', () => {
     it('detects 4-space indent', () => {
@@ -179,5 +184,115 @@ describe('reconcileAutoInstallExtensions', () => {
         await reconcileAutoInstallExtensions(missing, indexPath, true);
 
         expect(await fs.pathExists(missing)).toBe(false);
+    });
+});
+
+describe('decideFileSync', () => {
+    const lastSync = new Date('2024-01-01T00:00:00Z');
+    const before = new Date('2023-12-31T00:00:00Z');
+    const after = new Date('2024-01-02T00:00:00Z');
+
+    // A default set of params representing "both exist, content differs,
+    // nothing changed since lastSync" — individual tests override just the
+    // fields they care about.
+    const base = {
+        localExists: true,
+        remoteFileExists: true,
+        contentsEqual: false,
+        localMtime: before,
+        remoteMtime: before,
+        lastSync,
+    };
+
+    it('reports both-missing when neither side has the file', () => {
+        expect(decideFileSync({ ...base, localExists: false, remoteFileExists: false })).toBe(
+            'both-missing',
+        );
+    });
+
+    it('reports push-new when only local exists', () => {
+        expect(decideFileSync({ ...base, remoteFileExists: false })).toBe('push-new');
+    });
+
+    it('reports push-new even if content/mtime fields are irrelevant', () => {
+        expect(
+            decideFileSync({
+                ...base,
+                remoteFileExists: false,
+                contentsEqual: true,
+                localMtime: after,
+            }),
+        ).toBe('push-new');
+    });
+
+    it('reports pull-new when only remote exists', () => {
+        expect(decideFileSync({ ...base, localExists: false })).toBe('pull-new');
+    });
+
+    it('reports in-sync when contents are equal, regardless of mtimes', () => {
+        expect(
+            decideFileSync({
+                ...base,
+                contentsEqual: true,
+                localMtime: after,
+                remoteMtime: before,
+            }),
+        ).toBe('in-sync');
+    });
+
+    it('reports push-local-newer when only local changed since lastSync', () => {
+        expect(decideFileSync({ ...base, localMtime: after, remoteMtime: before })).toBe(
+            'push-local-newer',
+        );
+    });
+
+    it('reports pull-remote-newer when only remote changed since lastSync', () => {
+        expect(decideFileSync({ ...base, localMtime: before, remoteMtime: after })).toBe(
+            'pull-remote-newer',
+        );
+    });
+
+    it('reports conflict when both changed since lastSync', () => {
+        expect(decideFileSync({ ...base, localMtime: after, remoteMtime: after })).toBe('conflict');
+    });
+
+    it('reports conflict when neither mtime moved but content still differs', () => {
+        // Clock-skew / manual-edit-without-mtime-bump edge case — falls back
+        // to conflict rather than silently picking a side.
+        expect(decideFileSync({ ...base, localMtime: before, remoteMtime: before })).toBe(
+            'conflict',
+        );
+    });
+
+    it('treats a mtime exactly equal to lastSync as unchanged', () => {
+        expect(decideFileSync({ ...base, localMtime: lastSync, remoteMtime: before })).toBe(
+            'conflict',
+        );
+    });
+
+    it('treats both sides as changed when there is no lastSync yet', () => {
+        expect(
+            decideFileSync({ ...base, lastSync: null, localMtime: before, remoteMtime: before }),
+        ).toBe('conflict');
+    });
+});
+
+describe('resolveConflictStrategy', () => {
+    it('honors an explicit local strategy even when silent', () => {
+        expect(resolveConflictStrategy('local', true)).toBe('local');
+        expect(resolveConflictStrategy('local', false)).toBe('local');
+    });
+
+    it('honors an explicit remote strategy even when silent', () => {
+        expect(resolveConflictStrategy('remote', true)).toBe('remote');
+        expect(resolveConflictStrategy('remote', false)).toBe('remote');
+    });
+
+    it('falls back to local when asking is not possible (silent/daemon mode)', () => {
+        expect(resolveConflictStrategy('ask', true)).toBe('local');
+    });
+
+    it('defers to an interactive prompt when not silent and strategy is ask', () => {
+        expect(resolveConflictStrategy('ask', false)).toBe('ask');
     });
 });

@@ -7,7 +7,7 @@ pack:
     pnpm pack
 
 # Build the package (creates dist/)
-build:
+build: check
     pnpm build
 
 # Bump version (major, minor, patch or <version> e.g. 1.2.3)
@@ -35,3 +35,4 @@ brew:
 check:
     pnpm lint
     pnpm fmt
+    pnpm test

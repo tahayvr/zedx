@@ -63,6 +63,58 @@ export function detectIndent(src: string): FormattingOptions {
     return { insertSpaces: true, tabSize: ws.length };
 }
 
+// Pure decision matrix for what to do with a single tracked file, given its
+// local/remote existence and (when both exist) content + mtime state. Kept
+// side-effect free so the branching logic can be tested without spinning up
+// real git repos or the filesystem.
+export type FileSyncDecision =
+    | 'both-missing'
+    | 'push-new'
+    | 'pull-new'
+    | 'in-sync'
+    | 'push-local-newer'
+    | 'pull-remote-newer'
+    | 'conflict';
+
+export function decideFileSync(params: {
+    localExists: boolean;
+    remoteFileExists: boolean;
+    contentsEqual: boolean;
+    localMtime: Date;
+    remoteMtime: Date;
+    lastSync: Date | null;
+}): FileSyncDecision {
+    const { localExists, remoteFileExists, contentsEqual, localMtime, remoteMtime, lastSync } =
+        params;
+
+    if (!localExists && !remoteFileExists) return 'both-missing';
+    if (localExists && !remoteFileExists) return 'push-new';
+    if (!localExists && remoteFileExists) return 'pull-new';
+    if (contentsEqual) return 'in-sync';
+
+    // No lastSync (first sync) means both sides are treated as changed,
+    // which — when both exist and differ — falls through to 'conflict'.
+    const localChanged = !lastSync || localMtime > lastSync;
+    const remoteChanged = !lastSync || remoteMtime > lastSync;
+
+    if (localChanged && !remoteChanged) return 'push-local-newer';
+    if (remoteChanged && !localChanged) return 'pull-remote-newer';
+    return 'conflict';
+}
+
+// Effective conflict-resolution strategy, given the persisted/CLI strategy and
+// whether we're running unattended (daemon mode can't prompt).
+export type ConflictResolution = 'local' | 'remote' | 'ask';
+
+export function resolveConflictStrategy(
+    conflict: ConflictStrategy,
+    silent: boolean,
+): ConflictResolution {
+    if (conflict === 'local' || conflict === 'remote') return conflict;
+    if (silent) return 'local';
+    return 'ask';
+}
+
 // Reconcile auto_install_extensions in settings.json against the live
 // extensions/index.json so that:
 //   - newly installed extensions (present in index, missing from the list) are added as true
@@ -511,14 +563,53 @@ export async function runSync(
                 }
             }
 
-            // Both missing — skip
-            if (!localExists && !remoteFileExists) {
+            // Both exist — compare content and mtimes up front so the decision
+            // matrix (decideFileSync) has everything it needs.
+            let contentsEqual = false;
+            let localMtime = new Date(0);
+            let remoteMtime = new Date(0);
+
+            if (localExists && remoteFileExists) {
+                const localContent = await fs.readFile(file.localPath, 'utf-8');
+                const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
+                contentsEqual = localContent === remoteContent;
+
+                if (!contentsEqual) {
+                    // Use local mtime for local file, and the git commit timestamp for
+                    // the remote file — the temp dir mtime is just when git checked it
+                    // out, not when it was actually changed, so it can't be used for
+                    // comparison.
+                    localMtime = (await fs.stat(file.localPath)).mtime;
+                    if (remoteExists) {
+                        try {
+                            const gitLog = await git.log({
+                                file: path.basename(file.repoPath),
+                                maxCount: 1,
+                                format: { date: '%cI' },
+                            });
+                            if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
+                        } catch {
+                            // fall back to epoch — remote will appear unchanged
+                        }
+                    }
+                }
+            }
+
+            const decision = decideFileSync({
+                localExists,
+                remoteFileExists,
+                contentsEqual,
+                localMtime,
+                remoteMtime,
+                lastSync,
+            });
+
+            if (decision === 'both-missing') {
                 log.warn(`${file.label}: not found locally or remotely — skipping.`);
                 continue;
             }
 
-            // Remote doesn't have it yet — first push.
-            if (localExists && !remoteFileExists) {
+            if (decision === 'push-new') {
                 log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
                 await fs.ensureDir(path.dirname(file.repoPath));
                 await fs.copy(file.localPath, file.repoPath, { overwrite: true });
@@ -526,8 +617,7 @@ export async function runSync(
                 continue;
             }
 
-            // Local doesn't have it — pull remote
-            if (!localExists && remoteFileExists) {
+            if (decision === 'pull-new') {
                 log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
                 if (await fs.pathExists(file.localPath)) {
                     await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
@@ -539,109 +629,83 @@ export async function runSync(
                 continue;
             }
 
-            // Both exist — compare content
-            const localContent = await fs.readFile(file.localPath, 'utf-8');
-            const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
-
-            if (localContent === remoteContent) {
+            if (decision === 'in-sync') {
                 log.success(`${file.label}: ${color.dim('already in sync')}`);
                 continue;
             }
 
-            // Use local mtime for local file, and the git commit timestamp for the
-            // remote file — the temp dir mtime is just when git checked it out, not
-            // when it was actually changed, so it can't be used for comparison.
-            const localMtime = (await fs.stat(file.localPath)).mtime;
-            let remoteMtime = new Date(0);
-            if (remoteExists) {
-                try {
-                    const gitLog = await git.log({
-                        file: path.basename(file.repoPath),
-                        maxCount: 1,
-                        format: { date: '%cI' },
-                    });
-                    if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
-                } catch {
-                    // fall back to epoch — remote will appear unchanged
-                }
-            }
-
-            const localChanged = !lastSync || localMtime > lastSync;
-            const remoteChanged = !lastSync || remoteMtime > lastSync;
-
-            if (localChanged && !remoteChanged) {
-                // Only local changed → push
+            if (decision === 'push-local-newer') {
                 log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
                 await fs.ensureDir(path.dirname(file.repoPath));
                 await fs.copy(file.localPath, file.repoPath, { overwrite: true });
                 anyChanges = true;
-            } else if (remoteChanged && !localChanged) {
-                // Only remote changed → pull
+                continue;
+            }
+
+            if (decision === 'pull-remote-newer') {
                 log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
                 await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
                 if (!silent)
                     p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
                 await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-            } else {
-                // Both changed — resolve based on strategy
-                // Determine the effective resolution:
-                //   - explicit --local / --remote flag always wins
-                //   - silent (daemon) mode falls back to local
-                //   - otherwise prompt interactively
-                let resolution: 'local' | 'remote';
+                continue;
+            }
 
+            // decision === 'conflict' — resolve based on strategy
+            const strategy = resolveConflictStrategy(conflict, silent);
+            let resolution: 'local' | 'remote';
+
+            if (strategy === 'local' || strategy === 'remote') {
+                resolution = strategy;
                 if (conflict === 'local' || conflict === 'remote') {
-                    resolution = conflict;
                     log.warn(
                         `${file.label}: conflict — using ${color.bold(resolution)} (--${resolution} flag).`,
                     );
-                } else if (silent) {
-                    // Daemon can't prompt — local wins, will be pushed
-                    resolution = 'local';
+                } else {
                     log.warn(
                         `${file.label}: conflict detected in unattended mode — keeping local.`,
                     );
-                } else {
-                    p.log.warn(color.yellow(`conflict between local and remote ${file.label}`));
+                }
+            } else {
+                p.log.warn(color.yellow(`conflict between local and remote ${file.label}`));
 
-                    const choice = await p.select({
-                        message: `Which version of ${color.bold(file.label)} should win?`,
-                        options: [
-                            {
-                                value: 'local',
-                                label: 'Keep local',
-                                hint: `modified ${localMtime.toLocaleString()}`,
-                            },
-                            {
-                                value: 'remote',
-                                label: 'Use remote',
-                                hint: `modified ${remoteMtime.toLocaleString()}`,
-                            },
-                        ],
-                    });
+                const choice = await p.select({
+                    message: `Which version of ${color.bold(file.label)} should win?`,
+                    options: [
+                        {
+                            value: 'local',
+                            label: 'Keep local',
+                            hint: `modified ${localMtime.toLocaleString()}`,
+                        },
+                        {
+                            value: 'remote',
+                            label: 'Use remote',
+                            hint: `modified ${remoteMtime.toLocaleString()}`,
+                        },
+                    ],
+                });
 
-                    if (p.isCancel(choice)) {
-                        p.cancel('Cancelled.');
-                        process.exit(0);
-                    }
-
-                    resolution = choice as 'local' | 'remote';
+                if (p.isCancel(choice)) {
+                    p.cancel('Cancelled.');
+                    process.exit(0);
                 }
 
-                if (resolution === 'local') {
-                    if (!silent && conflict === 'ask')
-                        p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                    await fs.ensureDir(path.dirname(file.repoPath));
-                    await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                    anyChanges = true;
-                } else {
-                    if (!silent && conflict === 'ask')
-                        p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
-                    await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
-                    if (!silent)
-                        p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
-                    await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                }
+                resolution = choice as 'local' | 'remote';
+            }
+
+            if (resolution === 'local') {
+                if (!silent && conflict === 'ask')
+                    p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
+                await fs.ensureDir(path.dirname(file.repoPath));
+                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
+                anyChanges = true;
+            } else {
+                if (!silent && conflict === 'ask')
+                    p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
+                await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
+                if (!silent)
+                    p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
+                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
             }
         }
 
