@@ -96,7 +96,10 @@ zedx config conflict              # Set default conflict strategy interactively
 zedx config conflict --ask        # Always prompt on conflict
 zedx config conflict --local      # Local always wins, no prompt
 zedx config conflict --remote     # Remote always wins, no prompt
+zedx config files                 # Choose which files zedx sync touches by default
 ```
+
+`zedx sync select` still exists for one-off overrides — `zedx config files` sets the persistent default so every plain `zedx sync` only touches the files you chose.
 
 ### Versioning
 

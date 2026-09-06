@@ -96,6 +96,33 @@ export async function buildSnippetFileEntries(
     }));
 }
 
+// The selectable file groups, shared between `zedx sync select` and
+// `zedx config files` so the two commands never drift out of sync with each
+// other. 'snippets' is a group key, not a literal file — it matches every
+// dynamically discovered `snippet:<filename>` entry (see filterSyncFiles).
+export const SYNC_FILE_GROUPS: Array<{ value: string; label: string; hint: string }> = [
+    { value: 'settings', label: 'Settings', hint: 'settings.json' },
+    { value: 'keymap', label: 'Key bindings', hint: 'keymap.json' },
+    { value: 'tasks', label: 'Tasks', hint: 'tasks.json' },
+    { value: 'snippets', label: 'Snippets', hint: 'snippets/*.json' },
+];
+
+// Filter a file list down to the selected group keys. `undefined` means "no
+// selection configured" — sync/show everything. Individual snippet entries
+// (key `snippet:<filename>`) are matched by the 'snippets' group key, since
+// their exact filenames aren't known ahead of time.
+export function filterSyncFiles<T extends { key: string }>(
+    allFiles: T[],
+    selectedKeys: string[] | undefined,
+): T[] {
+    if (!selectedKeys) return allFiles;
+    return allFiles.filter(
+        f =>
+            selectedKeys.includes(f.key) ||
+            (f.key.startsWith('snippet:') && selectedKeys.includes('snippets')),
+    );
+}
+
 // Detect indentation from a JSONC source so edits match the surrounding file.
 // Falls back to two-space indent (Zed's default for settings.json).
 export function detectIndent(src: string): FormattingOptions {
@@ -284,7 +311,7 @@ export async function syncStatus(): Promise<void> {
             path.join(tmp, 'snippets'),
         );
 
-        const files: SyncFileEntry[] = [
+        const allFiles: SyncFileEntry[] = [
             {
                 key: 'settings',
                 repoPath: path.join(tmp, 'settings.json'),
@@ -305,6 +332,9 @@ export async function syncStatus(): Promise<void> {
             },
             ...snippetEntries,
         ];
+
+        // Only report on the files an actual `zedx sync` would touch.
+        const files = filterSyncFiles(allFiles, config.files);
 
         const lastSync = config.lastSync ? new Date(config.lastSync) : null;
 
@@ -517,32 +547,9 @@ export async function syncSelect(): Promise<void> {
 
     await requireSyncConfig();
 
-    const allFiles: Array<{ value: string; label: string; hint: string }> = [
-        {
-            value: 'settings',
-            label: 'Settings',
-            hint: 'settings.json',
-        },
-        {
-            value: 'keymap',
-            label: 'Key bindings',
-            hint: 'keymap.json',
-        },
-        {
-            value: 'tasks',
-            label: 'Tasks',
-            hint: 'tasks.json',
-        },
-        {
-            value: 'snippets',
-            label: 'Snippets',
-            hint: 'snippets/*.json',
-        },
-    ];
-
     const selected = await p.multiselect({
         message: 'Select files to sync',
-        options: allFiles,
+        options: SYNC_FILE_GROUPS,
         required: true,
     });
 
@@ -643,13 +650,10 @@ export async function runSync(
             ...snippetEntries,
         ];
 
-        const files = selectedFiles
-            ? allFiles.filter(
-                  f =>
-                      selectedFiles.includes(f.key) ||
-                      (f.key.startsWith('snippet:') && selectedFiles.includes('snippets')),
-              )
-            : allFiles;
+        // An explicit --select-style call wins; otherwise fall back to the
+        // persisted default from `zedx config files` (undefined means sync
+        // everything).
+        const files = filterSyncFiles(allFiles, selectedFiles ?? config.files);
 
         let anyChanges = false;
 

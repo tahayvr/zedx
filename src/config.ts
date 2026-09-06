@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import color from 'picocolors';
 import simpleGit from 'simple-git';
 
+import { SYNC_FILE_GROUPS } from './sync.js';
 import type { SyncConfig, ConflictStrategy } from './types/index.js';
 
 const ZEDX_CONFIG_DIR = path.join(os.homedir(), '.config', 'zedx');
@@ -156,7 +157,50 @@ export async function configRepo(): Promise<void> {
     );
 }
 
-type ConfigOption = 'repo' | 'conflict';
+// zedx config files
+export async function configFiles(): Promise<void> {
+    console.log('');
+    p.intro(
+        `${color.bgBlue(color.bold(' zedx config files '))} ${color.blue('Set default files to sync…')}`,
+    );
+
+    const existing = await readConfig();
+
+    if (!existing) {
+        p.log.error(
+            color.red('No sync config found. Run ') +
+                color.cyan('zedx sync init') +
+                color.red(' first.'),
+        );
+        process.exit(1);
+    }
+
+    const selected = await p.multiselect({
+        message: 'Which files should `zedx sync` touch by default?',
+        options: SYNC_FILE_GROUPS,
+        initialValues: existing.files ?? SYNC_FILE_GROUPS.map(g => g.value),
+        required: true,
+    });
+
+    if (p.isCancel(selected)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const updated: PersistedConfig = {
+        ...existing,
+        files: selected as string[],
+    };
+
+    await writeConfig(updated);
+
+    p.outro(
+        `${color.green('✓')} Default sync files set to ${color.cyan((selected as string[]).join(', '))}.\n\n` +
+            `  ${color.dim('Use')} ${color.cyan('zedx sync select')} ${color.dim('for a one-off override.')}`,
+    );
+}
+
+type ConfigOption = 'repo' | 'conflict' | 'files';
 
 // zedx config (interactive menu)
 export async function runConfig(direct?: ConfigOption): Promise<void> {
@@ -167,6 +211,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
 
     if (direct === 'conflict') {
         await configConflict();
+        return;
+    }
+
+    if (direct === 'files') {
+        await configFiles();
         return;
     }
 
@@ -186,6 +235,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
                 label: 'Conflict strategy',
                 hint: 'What to do when local and remote both changed',
             },
+            {
+                value: 'files',
+                label: 'Sync files',
+                hint: 'Which files zedx sync touches by default',
+            },
         ],
     });
 
@@ -198,5 +252,7 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
         await configRepo();
     } else if (option === 'conflict') {
         await configConflict();
+    } else if (option === 'files') {
+        await configFiles();
     }
 }

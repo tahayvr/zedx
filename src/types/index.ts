@@ -14,6 +14,9 @@ export interface SyncConfig {
     syncRepo: string;
     branch: string;
     conflictStrategy?: ConflictStrategy;
+    // Persisted default file selection (group keys: 'settings' | 'keymap' |
+    // 'tasks' | 'snippets'). Undefined/absent means "sync everything".
+    files?: string[];
 }
 
 export type License =

@@ -8,6 +8,7 @@ import {
     buildSnippetFileEntries,
     decideFileSync,
     detectIndent,
+    filterSyncFiles,
     reconcileAutoInstallExtensions,
     resolveConflictStrategy,
 } from './sync.js';
@@ -370,5 +371,41 @@ describe('buildSnippetFileEntries', () => {
         const entries = await buildSnippetFileEntries(localDir, remoteDir);
 
         expect(entries.map(e => e.key)).toEqual(['snippet:python.json']);
+    });
+});
+
+describe('filterSyncFiles', () => {
+    const files = [
+        { key: 'settings' },
+        { key: 'keymap' },
+        { key: 'tasks' },
+        { key: 'snippet:python.json' },
+        { key: 'snippet:rust.json' },
+    ];
+
+    it('returns everything when no selection is given', () => {
+        expect(filterSyncFiles(files, undefined)).toEqual(files);
+    });
+
+    it('filters down to the selected fixed-file keys', () => {
+        expect(filterSyncFiles(files, ['settings', 'tasks'])).toEqual([
+            { key: 'settings' },
+            { key: 'tasks' },
+        ]);
+    });
+
+    it('matches every snippet entry via the "snippets" group key', () => {
+        expect(filterSyncFiles(files, ['snippets'])).toEqual([
+            { key: 'snippet:python.json' },
+            { key: 'snippet:rust.json' },
+        ]);
+    });
+
+    it('excludes snippets when "snippets" is not selected', () => {
+        expect(filterSyncFiles(files, ['settings'])).toEqual([{ key: 'settings' }]);
+    });
+
+    it('returns an empty list when the selection matches nothing', () => {
+        expect(filterSyncFiles(files, ['nonexistent'])).toEqual([]);
     });
 });
