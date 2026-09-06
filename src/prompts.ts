@@ -96,6 +96,11 @@ export async function promptUser(): Promise<ExtensionOptions> {
                 label: 'Language',
                 hint: 'Syntax highlighting, indentation, etc.',
             },
+            {
+                value: 'icon-theme',
+                label: 'Icon theme',
+                hint: 'File/folder icons in the project panel',
+            },
         ],
         required: true,
     });
@@ -147,6 +152,39 @@ export async function promptThemeDetails(): Promise<{
     return {
         themeName: String(themeName),
         appearance: appearance as 'light' | 'dark' | 'both',
+    };
+}
+
+export async function promptIconThemeDetails(): Promise<{
+    iconThemeName: string;
+    iconThemeAppearance: 'light' | 'dark' | 'both';
+}> {
+    const iconThemeName = await p.text({
+        message: 'Icon theme name:',
+        placeholder: 'My Icon Theme',
+    });
+    if (p.isCancel(iconThemeName)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const appearance = await p.select({
+        message: 'Icon theme appearance:',
+        options: [
+            { value: 'dark', label: 'Dark' },
+            { value: 'light', label: 'Light' },
+            { value: 'both', label: 'Both (Dark & Light)' },
+        ],
+        initialValue: 'dark',
+    });
+    if (p.isCancel(appearance)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    return {
+        iconThemeName: String(iconThemeName),
+        iconThemeAppearance: appearance as 'light' | 'dark' | 'both',
     };
 }
 

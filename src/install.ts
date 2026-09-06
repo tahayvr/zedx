@@ -95,6 +95,15 @@ function buildManifest(extensionDir: string, toml: string): ExtensionManifest {
               .map(f => `themes/${f}`)
         : [];
 
+    // Detect icon themes
+    const iconThemesDir = path.join(extensionDir, 'icon_themes');
+    const iconThemes: string[] = fs.pathExistsSync(iconThemesDir)
+        ? fs
+              .readdirSync(iconThemesDir)
+              .filter(f => f.endsWith('.json'))
+              .map(f => `icon_themes/${f}`)
+        : [];
+
     // Detect languages
     const langsDir = path.join(extensionDir, 'languages');
     const languages: string[] = fs.pathExistsSync(langsDir)
@@ -138,7 +147,7 @@ function buildManifest(extensionDir: string, toml: string): ExtensionManifest {
         authors,
         lib: { kind: hasLib ? 'Rust' : null, version: null },
         themes,
-        icon_themes: [],
+        icon_themes: iconThemes,
         languages,
         grammars,
         language_servers: languageServers,

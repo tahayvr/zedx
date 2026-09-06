@@ -71,17 +71,19 @@ The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. An
 # Create a new extension
 zedx create
 
-# Add a theme or language to an existing extension
+# Add a theme, icon theme, or language to an existing extension
 zedx add theme "Midnight Blue"
+zedx add icon-theme "Midnight Blue Icons"
 zedx add language rust
 ```
 
 ### Supported extension types:
 
 1. **Themes** - Color schemes for the editor
-2. **Languages** - Syntax highlighting, indentation, and optional LSP support
+2. **Icon themes** - File/folder icons in the project panel
+3. **Languages** - Syntax highlighting, indentation, and optional LSP support
 
-You can choose to include theme, language, or both when creating an extension.
+You can choose any combination of these when creating an extension.
 
 ### Validation
 

@@ -1,12 +1,12 @@
 {
   "$schema": "https://zed.dev/schema/themes/v0.2.0.json",
-  "name": "<%= themeName %>",
-  "author": "<%= author %>",
+  "name": <%- JSON.stringify(themeName) %>,
+  "author": <%- JSON.stringify(author) %>,
   "_todo": "TODO(edit-me): replace the placeholder grayscale colors in 'style' with your actual palette. Search for hex values like #d4d4d4ff to find them.",
   "themes": [
 <% appearances.forEach((app, index) => { %>
     {
-      "name": "<%= themeName %> <%= app === 'dark' ? 'Dark' : 'Light' %>",
+      "name": <%- JSON.stringify(themeName + ' ' + (app === 'dark' ? 'Dark' : 'Light')) %>,
       "appearance": "<%= app %>",
       "style": {
         "accents": <%- JSON.stringify(app === 'dark' ? ['#d4d4d4ff', '#c0c0c0ff', '#a0a0a0ff', '#909090ff', '#808080ff', '#707070ff', '#606060ff'] : ['#1e1e1eff', '#333333ff', '#4d4d4dff', '#666666ff', '#808080ff', '#999999ff', '#b3b3b3ff']) %>,

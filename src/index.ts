@@ -8,13 +8,18 @@ import { Command } from 'commander';
 import fs from 'fs-extra';
 import color from 'picocolors';
 
-import { addTheme, addLanguage } from './add.js';
+import { addTheme, addIconTheme, addLanguage } from './add.js';
 import { runCheck } from './check.js';
 import { runConfig, configRepo, configConflict, configFiles } from './config.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
 import { installDevExtension } from './install.js';
-import { promptUser, promptThemeDetails, promptLanguageDetails } from './prompts.js';
+import {
+    promptUser,
+    promptThemeDetails,
+    promptIconThemeDetails,
+    promptLanguageDetails,
+} from './prompts.js';
 import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus, syncSelect } from './sync.js';
 import type { ConflictStrategy } from './types/index.js';
@@ -100,6 +105,7 @@ function printWelcome(): void {
     const extensionCommands: [string, string][] = [
         ['zedx create', 'Scaffold a new Zed extension'],
         ['zedx add theme <name>', 'Add a theme to an existing extension'],
+        ['zedx add icon-theme <name>', 'Add an icon theme to an existing extension'],
         ['zedx add language <id>', 'Add a language to an existing extension'],
         ['zedx snippet add lsp', 'Wire up a language server into the extension'],
         ['zedx check', 'Validate your extension config'],
@@ -130,6 +136,11 @@ async function runCreate(): Promise<void> {
     if (options.types.includes('theme')) {
         const themeDetails = await promptThemeDetails();
         Object.assign(options, themeDetails);
+    }
+
+    if (options.types.includes('icon-theme')) {
+        const iconThemeDetails = await promptIconThemeDetails();
+        Object.assign(options, iconThemeDetails);
     }
 
     if (options.types.includes('language')) {
@@ -195,13 +206,20 @@ async function main() {
 
     const addCmd = program
         .command('add')
-        .description('Add a theme or language to an existing extension');
+        .description('Add a theme, icon theme, or language to an existing extension');
 
     addCmd
         .command('theme <name>')
         .description('Add a new theme to the extension')
         .action(async (name: string) => {
             await addTheme(getCallerDir(), name);
+        });
+
+    addCmd
+        .command('icon-theme <name>')
+        .description('Add a new icon theme to the extension')
+        .action(async (name: string) => {
+            await addIconTheme(getCallerDir(), name);
         });
 
     addCmd

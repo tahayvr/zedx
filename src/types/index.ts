@@ -1,4 +1,4 @@
-export type ExtensionType = 'theme' | 'language';
+export type ExtensionType = 'theme' | 'language' | 'icon-theme';
 
 export interface ZedPaths {
     settings: string;
@@ -42,6 +42,15 @@ export interface ExtensionOptions {
 export interface ThemeOptions extends ExtensionOptions {
     themeName: string;
     appearance: 'light' | 'dark' | 'both';
+}
+
+export interface IconThemeOptions extends ExtensionOptions {
+    iconThemeName: string;
+    // Deliberately distinct from ThemeOptions.appearance: when an extension
+    // includes both a theme and an icon theme, they need independent
+    // appearance choices rather than one overwriting the other via
+    // Object.assign onto the same options object.
+    iconThemeAppearance: 'light' | 'dark' | 'both';
 }
 
 export interface LanguageOptions extends ExtensionOptions {

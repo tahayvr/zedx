@@ -93,6 +93,72 @@ export async function addTheme(callerDir: string, themeName: string): Promise<vo
     );
 }
 
+export async function addIconTheme(callerDir: string, iconThemeName: string): Promise<void> {
+    console.log('');
+    p.intro(
+        `${color.bgBlue(color.bold(' zedx add icon-theme '))} ${color.blue('Adding an icon theme to your extension…')}`,
+    );
+
+    const tomlPath = path.join(callerDir, 'extension.toml');
+    if (!(await fs.pathExists(tomlPath))) {
+        p.log.error(color.red('No extension.toml found. Run zedx from an extension directory.'));
+        process.exit(1);
+    }
+
+    const tomlContent = await fs.readFile(tomlPath, 'utf-8');
+    const author =
+        tomlGet(tomlContent, 'authors') ??
+        tomlContent.match(/^authors\s*=\s*\["([^"]+)"\]/m)?.[1] ??
+        '';
+
+    const appearance = await p.select({
+        message: 'Icon theme appearance:',
+        options: [
+            { value: 'dark', label: 'Dark' },
+            { value: 'light', label: 'Light' },
+            { value: 'both', label: 'Both (Dark & Light)' },
+        ],
+        initialValue: 'dark',
+    });
+    if (p.isCancel(appearance)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const appearances = appearance === 'both' ? ['dark', 'light'] : [appearance as string];
+    const iconThemeSlug = slugify(iconThemeName);
+    const iconThemeFile = `${iconThemeSlug}.json`;
+    const iconThemesDir = path.join(callerDir, 'icon_themes');
+    const iconThemePath = path.join(iconThemesDir, iconThemeFile);
+
+    if (await fs.pathExists(iconThemePath)) {
+        p.log.error(color.red(`icon_themes/${iconThemeFile} already exists.`));
+        process.exit(1);
+    }
+
+    await fs.ensureDir(iconThemesDir);
+
+    const iconThemeJson = await renderTemplate(
+        path.join(TEMPLATE_DIR, 'icon-theme/icon-theme.json.ejs'),
+        { author, iconThemeName, appearances } as Record<string, unknown>,
+    );
+    await fs.writeFile(iconThemePath, iconThemeJson);
+    p.log.success(`Created ${color.cyan(`icon_themes/${iconThemeFile}`)}`);
+
+    // Starter SVGs are static assets — copy without overwriting any icons
+    // the user already has (e.g. from an earlier icon theme in this extension).
+    await fs.copy(path.join(TEMPLATE_DIR, 'icon-theme/icons'), path.join(callerDir, 'icons'), {
+        overwrite: false,
+        errorOnExist: false,
+    });
+    p.log.success(`Ensured starter icons in ${color.cyan('icons/')}`);
+
+    p.outro(
+        `${color.green('✓')} Icon theme added.\n` +
+            `${color.dim('Run')} ${color.cyan('zedx check')} ${color.dim('to validate your extension.')}`,
+    );
+}
+
 export async function addLanguage(callerDir: string, languageId: string): Promise<void> {
     console.log('');
     p.intro(

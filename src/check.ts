@@ -169,6 +169,110 @@ export async function runCheck(callerDir: string): Promise<void> {
         results.push({ file: 'themes/', issues: themeIssues });
     }
 
+    // ── icon theme validation ─────────────────────────────────────────────────
+
+    const iconThemesDir = path.join(callerDir, 'icon_themes');
+    const hasIconTheme = await fs.pathExists(iconThemesDir);
+
+    if (hasIconTheme) {
+        const iconThemeFiles = (await fs.readdir(iconThemesDir)).filter(f => f.endsWith('.json'));
+
+        if (iconThemeFiles.length === 0) {
+            results.push({
+                file: 'icon_themes/',
+                issues: [
+                    {
+                        file: 'icon_themes/',
+                        message: 'No .json icon theme files found in icon_themes/ directory',
+                    },
+                ],
+            });
+        }
+
+        for (const iconThemeFile of iconThemeFiles) {
+            const iconThemePath = path.join(iconThemesDir, iconThemeFile);
+            const iconThemeIssues: Issue[] = [];
+
+            let iconThemeJson: Record<string, unknown>;
+            try {
+                iconThemeJson = await fs.readJson(iconThemePath);
+            } catch {
+                results.push({
+                    file: `icon_themes/${iconThemeFile}`,
+                    issues: [
+                        {
+                            file: `icon_themes/${iconThemeFile}`,
+                            message: 'Invalid JSON — file could not be parsed',
+                        },
+                    ],
+                });
+                continue;
+            }
+
+            const variants = iconThemeJson['themes'] as Array<Record<string, unknown>> | undefined;
+            if (!variants || variants.length === 0) {
+                iconThemeIssues.push({
+                    file: `icon_themes/${iconThemeFile}`,
+                    message: 'No theme variants found under the "themes" key',
+                });
+            } else {
+                for (const variant of variants) {
+                    const variantName = String(variant['name'] ?? 'unknown');
+
+                    const fileIcons = variant['file_icons'] as
+                        | Record<string, { path?: string }>
+                        | undefined;
+                    const fileSuffixes = variant['file_suffixes'] as
+                        | Record<string, string>
+                        | undefined;
+                    const fileStems = variant['file_stems'] as Record<string, string> | undefined;
+
+                    if (
+                        (!fileSuffixes || Object.keys(fileSuffixes).length === 0) &&
+                        (!fileStems || Object.keys(fileStems).length === 0)
+                    ) {
+                        iconThemeIssues.push({
+                            file: `icon_themes/${iconThemeFile}`,
+                            message: `Variant "${variantName}": no file_suffixes or file_stems mappings — every file will fall back to the default icon`,
+                            hint: 'Add entries like { "rs": "rust" } to file_suffixes, matching keys in file_icons',
+                        });
+                    }
+
+                    // Verify every icon path referenced anywhere in the variant
+                    // actually exists on disk, relative to the extension root.
+                    const referencedPaths = new Set<string>();
+                    for (const group of [
+                        variant['directory_icons'],
+                        variant['chevron_icons'],
+                    ] as Array<Record<string, string> | undefined>) {
+                        if (!group) continue;
+                        for (const p of Object.values(group)) {
+                            if (typeof p === 'string') referencedPaths.add(p);
+                        }
+                    }
+                    if (fileIcons) {
+                        for (const icon of Object.values(fileIcons)) {
+                            if (icon?.path) referencedPaths.add(icon.path);
+                        }
+                    }
+
+                    for (const iconPath of referencedPaths) {
+                        const resolvedPath = path.join(callerDir, iconPath);
+                        if (!(await fs.pathExists(resolvedPath))) {
+                            iconThemeIssues.push({
+                                file: `icon_themes/${iconThemeFile}`,
+                                message: `Variant "${variantName}": referenced icon "${iconPath}" does not exist`,
+                                hint: 'Fix the path or add the missing SVG file',
+                            });
+                        }
+                    }
+                }
+            }
+
+            results.push({ file: `icon_themes/${iconThemeFile}`, issues: iconThemeIssues });
+        }
+    }
+
     // ── language validation ───────────────────────────────────────────────────
 
     if (hasLanguage) {

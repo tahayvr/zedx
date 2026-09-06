@@ -59,6 +59,10 @@ export async function generateExtension(
         await generateTheme(options, targetDir);
     }
 
+    if (options.types.includes('icon-theme')) {
+        await generateIconTheme(options, targetDir);
+    }
+
     if (options.types.includes('language')) {
         await generateLanguage(options as LanguageOptions, targetDir);
     }
@@ -82,6 +86,34 @@ async function generateTheme(options: ExtensionOptions, targetDir: string): Prom
         themeData as Record<string, unknown>,
     );
     await fs.writeFile(path.join(themeDir, `${options.id}.json`), themeJson);
+}
+
+async function generateIconTheme(options: ExtensionOptions, targetDir: string): Promise<void> {
+    const iconThemeDir = path.join(targetDir, 'icon_themes');
+    await fs.ensureDir(iconThemeDir);
+
+    const appearance = (options as Record<string, unknown>).iconThemeAppearance || 'dark';
+    const appearances = appearance === 'both' ? ['dark', 'light'] : [appearance];
+
+    const iconThemeData = {
+        ...options,
+        iconThemeName: (options as Record<string, unknown>).iconThemeName || 'My Icon Theme',
+        appearances,
+    };
+
+    const iconThemeJson = await renderTemplate(
+        path.join(TEMPLATE_DIR, 'icon-theme/icon-theme.json.ejs'),
+        iconThemeData as Record<string, unknown>,
+    );
+    await fs.writeFile(path.join(iconThemeDir, `${options.id}.json`), iconThemeJson);
+
+    // Starter SVGs are static assets, not templates — copy as-is. Never
+    // overwrite: if an icon of the same name already exists (e.g. a second
+    // icon theme added to the same extension), keep the user's version.
+    await fs.copy(path.join(TEMPLATE_DIR, 'icon-theme/icons'), path.join(targetDir, 'icons'), {
+        overwrite: false,
+        errorOnExist: false,
+    });
 }
 
 async function generateLanguage(options: LanguageOptions, targetDir: string): Promise<void> {

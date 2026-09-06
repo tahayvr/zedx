@@ -1,0 +1,27 @@
+{
+  "$schema": "https://zed.dev/schema/icon_themes/v0.3.0.json",
+  "name": <%- JSON.stringify(iconThemeName) %>,
+  "author": <%- JSON.stringify(author) %>,
+  "_todo": "TODO(edit-me): replace the placeholder SVGs in icons/ with your own, then add file_suffixes/file_stems entries mapping extensions and filenames to file_icons keys.",
+  "themes": [
+<% appearances.forEach((app, index) => { %>
+    {
+      "name": <%- JSON.stringify(iconThemeName + ' ' + (app === 'dark' ? 'Dark' : 'Light')) %>,
+      "appearance": "<%= app %>",
+      "directory_icons": {
+        "collapsed": "./icons/folder.svg",
+        "expanded": "./icons/folder_open.svg"
+      },
+      "chevron_icons": {
+        "collapsed": "./icons/chevron_right.svg",
+        "expanded": "./icons/chevron_down.svg"
+      },
+      "file_stems": {},
+      "file_suffixes": {},
+      "file_icons": {
+        "file": { "path": "./icons/file.svg" }
+      }
+    }<% if (index < appearances.length - 1) { %>,<% } %>
+<% }); %>
+  ]
+}
