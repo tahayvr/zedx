@@ -317,7 +317,10 @@ async function main() {
         return;
     }
 
-    program.parse(argv);
+    await program.parseAsync(argv);
 }
 
-main().catch(console.error);
+main().catch(err => {
+    p.log.error(color.red(err instanceof Error ? err.message : String(err)));
+    process.exit(1);
+});

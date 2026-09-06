@@ -642,20 +642,38 @@ export async function runSync(
         // 3. Commit + push if any local files were written to the repo
         if (anyChanges) {
             spinner.start('Pushing changes to remote...');
-            await git.add(files.map(f => path.basename(f.repoPath)));
+            try {
+                await git.add(files.map(f => path.basename(f.repoPath)));
 
-            const status = await git.status();
-            if (status.staged.length > 0) {
-                const timestamp = new Date().toISOString();
-                await git.commit(`sync: ${timestamp}`);
-                try {
-                    await git.push('origin', config.branch, ['--set-upstream']);
-                } catch {
-                    await git.push('origin', config.branch);
+                const status = await git.status();
+                if (status.staged.length > 0) {
+                    if (!(await git.raw(['config', 'user.name']).catch(() => ''))) {
+                        await git.addConfig('user.name', 'zedx');
+                    }
+                    if (!(await git.raw(['config', 'user.email']).catch(() => ''))) {
+                        await git.addConfig('user.email', 'zedx@localhost');
+                    }
+
+                    const timestamp = new Date().toISOString();
+                    await git.commit(`sync: ${timestamp}`);
+                    try {
+                        await git.push('origin', config.branch, ['--set-upstream']);
+                    } catch {
+                        await git.push('origin', config.branch);
+                    }
+                    spinner.stop('Pushed.');
+                } else {
+                    spinner.stop('Nothing staged to push.');
                 }
-                spinner.stop('Pushed.');
-            } else {
-                spinner.stop('Nothing staged to push.');
+            } catch (err) {
+                spinner.stop(color.red('Failed to push changes.'));
+                const message = err instanceof Error ? err.message : String(err);
+                if (silent) {
+                    console.error(`[zedx] error: ${message}`);
+                } else {
+                    p.log.error(color.red(message));
+                }
+                throw err;
             }
         }
     });
