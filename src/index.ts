@@ -237,7 +237,11 @@ async function main() {
                 : opts.remote
                   ? 'remote'
                   : undefined;
-            await runSync({ conflict });
+            // Auto-detect unattended runs (daemon/scheduled task invocations
+            // have no TTY attached) so a conflict prompt never hangs waiting
+            // for input that can't arrive — falls back to "keep local".
+            const silent = !process.stdin.isTTY;
+            await runSync({ conflict, silent });
         });
 
     syncCmd

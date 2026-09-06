@@ -53,14 +53,17 @@ zedx sync install    # Install and enable the daemon
 zedx sync uninstall  # Disable and remove the daemon
 ```
 
-Installs a file-watcher that triggers `zedx sync` automatically whenever config files are saved. Supported platforms:
+Installs a background job that triggers `zedx sync` automatically. Supported platforms:
 
-| Platform | Mechanism                                              | Logs                                     |
-| -------- | ------------------------------------------------------ | ---------------------------------------- |
-| macOS    | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | `~/Library/Logs/zedx-sync.log`           |
-| Linux    | systemd user units (`~/.config/systemd/user/`)         | `journalctl --user -u zedx-sync.service` |
+| Platform | Mechanism                                              | Trigger                | Logs                                                           |
+| -------- | ------------------------------------------------------ | ---------------------- | -------------------------------------------------------------- |
+| macOS    | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | instantly on file save | `~/Library/Logs/zedx/sync.log`                                 |
+| Linux    | systemd user units (`~/.config/systemd/user/`)         | instantly on file save | `journalctl --user -u zedx-sync.service`                       |
+| Windows  | Task Scheduler (`ZedxSync` task)                       | polls every 5 minutes  | Task Scheduler → Task Scheduler Library → `ZedxSync` → History |
 
-The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. When a conflict is detected in daemon mode (no TTY), local always wins and a warning is logged.
+Windows has no lightweight per-file watch hook for Task Scheduler (unlike launchd's `WatchPaths` or systemd's `PathChanged`), so it polls on an interval instead of syncing instantly on save.
+
+The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. Any unattended run (no TTY attached — daemon, scheduled task, CI, etc.) automatically resolves conflicts by keeping local and logging a warning, instead of prompting.
 
 ### Scaffolding an extension
 

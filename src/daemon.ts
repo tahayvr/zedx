@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 
@@ -21,19 +21,32 @@ const SYSTEMD_UNIT_DIR = path.join(os.homedir(), '.config', 'systemd', 'user');
 const SYSTEMD_SERVICE_PATH = path.join(SYSTEMD_UNIT_DIR, `${SYSTEMD_SERVICE_NAME}.service`);
 const SYSTEMD_PATH_PATH = path.join(SYSTEMD_UNIT_DIR, `${SYSTEMD_SERVICE_NAME}.path`);
 
+const WINDOWS_TASK_NAME = 'ZedxSync';
+// Windows Task Scheduler has no lightweight equivalent to launchd's
+// WatchPaths / systemd's PathChanged — a real per-file watch trigger requires
+// a WMI event subscription, which is too heavyweight to set up from a CLI
+// install step. Polling every few minutes is the practical middle ground:
+// changes are picked up quickly without a long-running watcher process.
+const WINDOWS_POLL_INTERVAL_MINUTES = 5;
+
 function resolveZedxBinary(): string {
     try {
-        const bin = execSync('which zedx', { encoding: 'utf-8' }).trim();
+        const lookupCmd = process.platform === 'win32' ? 'where zedx' : 'which zedx';
+        const output = execSync(lookupCmd, { encoding: 'utf-8' });
+        const bin = output.split(/\r?\n/)[0]?.trim();
         if (bin) return bin;
     } catch {
         /* fall through */
     }
 
+    if (process.platform === 'win32') {
+        return `"${process.execPath}" "${process.argv[1]}"`;
+    }
     return `${process.execPath} ${process.argv[1]}`;
 }
 
 function unsupportedPlatform(): never {
-    p.log.error(color.red(`zedx sync install is only supported on macOS and Linux.`));
+    p.log.error(color.red(`zedx sync install is only supported on macOS, Linux, and Windows.`));
     process.exit(1);
 }
 
@@ -181,12 +194,72 @@ async function uninstallLinux(): Promise<void> {
     p.log.success('Daemon uninstalled.');
 }
 
+async function installWindows(zedxBin: string): Promise<void> {
+    // /tr is the exact command line Task Scheduler will run — no shell is
+    // involved (execFileSync bypasses cmd.exe entirely), so zedxBin's own
+    // quoting around paths-with-spaces is all that's needed here.
+    execFileSync(
+        'schtasks',
+        [
+            '/create',
+            '/tn',
+            WINDOWS_TASK_NAME,
+            '/tr',
+            `${zedxBin} sync`,
+            '/sc',
+            'minute',
+            '/mo',
+            String(WINDOWS_POLL_INTERVAL_MINUTES),
+            '/f',
+        ],
+        { stdio: 'pipe' },
+    );
+
+    p.log.success(`Scheduled task installed: ${color.dim(WINDOWS_TASK_NAME)}`);
+    p.log.info(`To check status: ${color.cyan(`schtasks /query /tn ${WINDOWS_TASK_NAME}`)}`);
+    p.log.info(
+        `Run history: Task Scheduler (taskschd.msc) → Task Scheduler Library → ${WINDOWS_TASK_NAME} → History tab.`,
+    );
+}
+
+async function uninstallWindows(): Promise<void> {
+    try {
+        execFileSync('schtasks', ['/query', '/tn', WINDOWS_TASK_NAME], { stdio: 'pipe' });
+    } catch {
+        p.log.warn(color.yellow('No scheduled task found — nothing to uninstall.'));
+        return;
+    }
+
+    execFileSync('schtasks', ['/delete', '/tn', WINDOWS_TASK_NAME, '/f'], { stdio: 'pipe' });
+    p.log.success('Daemon uninstalled.');
+}
+
+function isSupportedPlatform(platform: NodeJS.Platform): boolean {
+    return platform === 'darwin' || platform === 'linux' || platform === 'win32';
+}
+
 export async function syncInstall(): Promise<void> {
     console.log('');
     p.intro(color.bold('zedx sync install'));
 
     const platform = process.platform;
-    if (platform !== 'darwin' && platform !== 'linux') unsupportedPlatform();
+    if (!isSupportedPlatform(platform)) unsupportedPlatform();
+
+    const zedxBin = resolveZedxBinary();
+    p.log.info(`Binary:  ${color.dim(zedxBin)}`);
+
+    if (platform === 'win32') {
+        p.log.info(
+            `Windows has no lightweight per-file watch hook for Task Scheduler, so zedx will ` +
+                `poll every ${WINDOWS_POLL_INTERVAL_MINUTES} minutes instead of syncing instantly on save.`,
+        );
+        await installWindows(zedxBin);
+        p.outro(
+            `${color.green('✓')} zedx sync will now run automatically every ${WINDOWS_POLL_INTERVAL_MINUTES} minutes.\n\n` +
+                `  Run ${color.cyan('zedx sync uninstall')} to remove the task at any time.`,
+        );
+        return;
+    }
 
     const zedPaths = resolveZedPaths();
     // Snippets are watched as a directory rather than individual files, since
@@ -200,9 +273,7 @@ export async function syncInstall(): Promise<void> {
     // already exist, and a user with no snippets yet won't have this
     // directory created by Zed until they add one.
     await fs.ensureDir(zedPaths.snippetsDir);
-    const zedxBin = resolveZedxBinary();
 
-    p.log.info(`Binary:  ${color.dim(zedxBin)}`);
     p.log.info(`Watching:`);
     for (const wp of watchPaths) {
         p.log.info(`  ${color.dim(wp)}`);
@@ -225,12 +296,14 @@ export async function syncUninstall(): Promise<void> {
     p.intro(color.bold('zedx sync uninstall'));
 
     const platform = process.platform;
-    if (platform !== 'darwin' && platform !== 'linux') unsupportedPlatform();
+    if (!isSupportedPlatform(platform)) unsupportedPlatform();
 
     if (platform === 'darwin') {
         await uninstallMacos();
-    } else {
+    } else if (platform === 'linux') {
         await uninstallLinux();
+    } else {
+        await uninstallWindows();
     }
 
     p.outro(`${color.green('✓')} Done.`);
