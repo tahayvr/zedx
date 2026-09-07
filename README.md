@@ -4,6 +4,10 @@
 
 <p align="center"> CLI toolkit for the Zed Editor</p>
 
+<p align="center">
+<a href="https://github.com/tahayvr/zedx/actions/workflows/ci.yml"><img src="https://github.com/tahayvr/zedx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
 ![screenshot](./assets/screenshot1.png)
 
 ## Installation
