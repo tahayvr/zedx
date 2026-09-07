@@ -5,6 +5,7 @@ import * as p from '@clack/prompts';
 import ejs from 'ejs';
 import fs from 'fs-extra';
 import color from 'picocolors';
+import { parse as parseToml, TomlError } from 'smol-toml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,9 +21,24 @@ async function renderTemplate(
     return ejs.render(template, data);
 }
 
-function tomlGet(content: string, key: string): string | undefined {
-    const match = content.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, 'm'));
-    return match?.[1];
+// Parses extension.toml, exiting with a clear error if it's malformed —
+// every `zedx add ...` command needs a readable manifest before it can do
+// anything useful.
+function parseExtensionToml(content: string): Record<string, unknown> {
+    try {
+        return parseToml(content) as Record<string, unknown>;
+    } catch (err) {
+        const message = err instanceof TomlError ? err.message : String(err);
+        p.log.error(color.red(`extension.toml is not valid TOML: ${message}`));
+        process.exit(1);
+    }
+}
+
+function tomlFirstAuthor(toml: Record<string, unknown>): string {
+    const authors = toml['authors'];
+    if (!Array.isArray(authors)) return '';
+    const first = authors.find(a => typeof a === 'string');
+    return typeof first === 'string' ? first : '';
 }
 
 function slugify(name: string): string {
@@ -45,11 +61,9 @@ export async function addTheme(callerDir: string, themeName: string): Promise<vo
     }
 
     const tomlContent = await fs.readFile(tomlPath, 'utf-8');
-    const extensionId = tomlGet(tomlContent, 'id') ?? 'extension';
-    const author =
-        tomlGet(tomlContent, 'authors') ??
-        tomlContent.match(/^authors\s*=\s*\["([^"]+)"\]/m)?.[1] ??
-        '';
+    const toml = parseExtensionToml(tomlContent);
+    const extensionId = typeof toml['id'] === 'string' ? toml['id'] : 'extension';
+    const author = tomlFirstAuthor(toml);
 
     const appearance = await p.select({
         message: 'Appearance:',
@@ -106,10 +120,8 @@ export async function addIconTheme(callerDir: string, iconThemeName: string): Pr
     }
 
     const tomlContent = await fs.readFile(tomlPath, 'utf-8');
-    const author =
-        tomlGet(tomlContent, 'authors') ??
-        tomlContent.match(/^authors\s*=\s*\["([^"]+)"\]/m)?.[1] ??
-        '';
+    const toml = parseExtensionToml(tomlContent);
+    const author = tomlFirstAuthor(toml);
 
     const appearance = await p.select({
         message: 'Icon theme appearance:',
@@ -172,10 +184,14 @@ export async function addLanguage(callerDir: string, languageId: string): Promis
     }
 
     const tomlContent = await fs.readFile(tomlPath, 'utf-8');
+    const toml = parseExtensionToml(tomlContent);
 
-    // Check for duplicate
+    // Check for duplicate — an active [grammars.<id>] table is picked up by
+    // the parser; a commented-out placeholder block isn't, so that still
+    // needs a raw-text check.
+    const grammarsTable = (toml['grammars'] as Record<string, unknown> | undefined) ?? {};
     const alreadyExists =
-        new RegExp(`^\\[grammars\\.${languageId}\\]`, 'm').test(tomlContent) ||
+        languageId in grammarsTable ||
         new RegExp(`^#\\s*\\[grammars\\.${languageId}\\]`, 'm').test(tomlContent);
     if (alreadyExists) {
         p.log.error(color.red(`Language "${languageId}" already exists in extension.toml.`));

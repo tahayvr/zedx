@@ -29,6 +29,9 @@ importers:
       simple-git:
         specifier: ^3.33.0
         version: 3.33.0
+      smol-toml:
+        specifier: ^1.8.0
+        version: 1.8.0
     devDependencies:
       '@types/ejs':
         specifier: ^3.1.5
@@ -877,6 +880,10 @@ packages:
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
 
+  smol-toml@1.8.0:
+    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
+    engines: {node: '>= 18'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -1633,6 +1640,8 @@ snapshots:
       - supports-color
 
   sisteransi@1.0.5: {}
+
+  smol-toml@1.8.0: {}
 
   source-map-js@1.2.1: {}
 

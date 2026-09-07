@@ -4,22 +4,23 @@ import path from 'path';
 import * as p from '@clack/prompts';
 import fs from 'fs-extra';
 import color from 'picocolors';
+import { parse as parseToml, TomlError } from 'smol-toml';
 
-// TOML helpers (regex-based — no parser dependency needed for these fields)
-function tomlGetString(content: string, key: string): string | undefined {
-    const match = content.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, 'm'));
-    return match?.[1];
+type TomlTable = Record<string, unknown>;
+
+function tomlString(table: TomlTable, key: string): string | undefined {
+    const value = table[key];
+    return typeof value === 'string' ? value : undefined;
 }
 
-function tomlGetNumber(content: string, key: string): number | undefined {
-    const match = content.match(new RegExp(`^${key}\\s*=\\s*(\\d+)`, 'm'));
-    return match ? Number(match[1]) : undefined;
+function tomlNumber(table: TomlTable, key: string): number | undefined {
+    const value = table[key];
+    return typeof value === 'number' ? value : undefined;
 }
 
-function tomlGetAuthors(content: string): string[] {
-    const match = content.match(/^authors\s*=\s*\[([^\]]*)\]/m);
-    if (!match) return [];
-    return [...match[1].matchAll(/"([^"]*)"/g)].map(m => m[1]);
+function tomlAuthors(table: TomlTable): string[] {
+    const value = table['authors'];
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 // Filesystem helpers
@@ -77,14 +78,14 @@ interface ExtensionManifest {
     capabilities: unknown[];
 }
 
-function buildManifest(extensionDir: string, toml: string): ExtensionManifest {
-    const id = tomlGetString(toml, 'id') ?? 'unknown';
-    const name = tomlGetString(toml, 'name') ?? id;
-    const version = tomlGetString(toml, 'version') ?? '0.0.1';
-    const schemaVersion = tomlGetNumber(toml, 'schema_version') ?? 1;
-    const description = tomlGetString(toml, 'description') ?? '';
-    const repository = tomlGetString(toml, 'repository') ?? '';
-    const authors = tomlGetAuthors(toml);
+function buildManifest(extensionDir: string, toml: TomlTable): ExtensionManifest {
+    const id = tomlString(toml, 'id') ?? 'unknown';
+    const name = tomlString(toml, 'name') ?? id;
+    const version = tomlString(toml, 'version') ?? '0.0.1';
+    const schemaVersion = tomlNumber(toml, 'schema_version') ?? 1;
+    const description = tomlString(toml, 'description') ?? '';
+    const repository = tomlString(toml, 'repository') ?? '';
+    const authors = tomlAuthors(toml);
 
     // Detect themes
     const themesDir = path.join(extensionDir, 'themes');
@@ -110,23 +111,28 @@ function buildManifest(extensionDir: string, toml: string): ExtensionManifest {
         ? listSubdirs(langsDir).map(d => `languages/${d}`)
         : [];
 
-    // Detect grammars from extension.toml  [grammars.<id>] blocks
+    // Detect grammars from the parsed [grammars.<id>] table
+    const grammarsTable = (toml['grammars'] as TomlTable | undefined) ?? {};
     const grammars: Record<string, unknown> = {};
-    const grammarMatches = toml.matchAll(
-        /^\[grammars\.([^\]]+)\]\s*\nrepository\s*=\s*"([^"]*)"\s*\nrev\s*=\s*"([^"]*)"/gm,
-    );
-    for (const m of grammarMatches) {
-        grammars[m[1]] = { repository: m[2], rev: m[3], path: null };
+    for (const [grammarId, value] of Object.entries(grammarsTable)) {
+        const entry = (value as TomlTable | undefined) ?? {};
+        grammars[grammarId] = {
+            repository: tomlString(entry, 'repository') ?? '',
+            rev: tomlString(entry, 'rev') ?? '',
+            path: null,
+        };
     }
 
-    // Detect language_servers from extension.toml  [language_servers.<id>] blocks
+    // Detect language_servers from the parsed [language_servers.<id>] table
+    const languageServersTable = (toml['language_servers'] as TomlTable | undefined) ?? {};
     const languageServers: Record<string, unknown> = {};
-    const lsMatches = toml.matchAll(
-        /^\[language_servers\.([^\]]+)\]\s*\nname\s*=\s*"([^"]*)"\s*\nlanguages\s*=\s*\[([^\]]*)\]/gm,
-    );
-    for (const m of lsMatches) {
-        const langs = [...m[3].matchAll(/"([^"]*)"/g)].map(x => x[1]);
-        languageServers[m[1]] = {
+    for (const [lsId, value] of Object.entries(languageServersTable)) {
+        const entry = (value as TomlTable | undefined) ?? {};
+        const languagesValue = entry['languages'];
+        const langs = Array.isArray(languagesValue)
+            ? languagesValue.filter((v): v is string => typeof v === 'string')
+            : [];
+        languageServers[lsId] = {
             language: langs[0] ?? '',
             languages: langs.slice(1),
             language_ids: {},
@@ -172,8 +178,17 @@ export async function installDevExtension(callerDir: string): Promise<void> {
         process.exit(1);
     }
 
-    const toml = await fs.readFile(tomlPath, 'utf-8');
-    const extensionId = tomlGetString(toml, 'id');
+    const tomlContent = await fs.readFile(tomlPath, 'utf-8');
+    let toml: TomlTable;
+    try {
+        toml = parseToml(tomlContent) as TomlTable;
+    } catch (err) {
+        const message = err instanceof TomlError ? err.message : String(err);
+        p.log.error(color.red(`extension.toml is not valid TOML: ${message}`));
+        process.exit(1);
+    }
+
+    const extensionId = tomlString(toml, 'id');
     if (!extensionId) {
         p.log.error(color.red('Could not read extension id from extension.toml.'));
         process.exit(1);

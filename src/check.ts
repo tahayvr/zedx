@@ -3,6 +3,7 @@ import path from 'path';
 import * as p from '@clack/prompts';
 import fs from 'fs-extra';
 import color from 'picocolors';
+import { parse as parseToml, TomlError } from 'smol-toml';
 
 interface Issue {
     file: string;
@@ -15,14 +16,9 @@ interface ValidationResult {
     issues: Issue[];
 }
 
-// Minimal TOML key extraction — handles `key = "value"` and `key = ["a", "b"]`
-function tomlGet(content: string, key: string): string | undefined {
-    const match = content.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, 'm'));
-    return match?.[1];
-}
-
-function tomlHasUncommentedKey(content: string, key: string): boolean {
-    return new RegExp(`^${key}\\s*=`, 'm').test(content);
+function tomlString(table: Record<string, unknown>, key: string): string | undefined {
+    const value = table[key];
+    return typeof value === 'string' ? value : undefined;
 }
 
 export async function runCheck(callerDir: string): Promise<void> {
@@ -40,9 +36,19 @@ export async function runCheck(callerDir: string): Promise<void> {
     }
 
     const tomlContent = await fs.readFile(tomlPath, 'utf-8');
-    const extensionId = tomlGet(tomlContent, 'id');
-    const extensionName = tomlGet(tomlContent, 'name');
-    const repository = tomlGet(tomlContent, 'repository');
+
+    let toml: Record<string, unknown>;
+    try {
+        toml = parseToml(tomlContent) as Record<string, unknown>;
+    } catch (err) {
+        const message = err instanceof TomlError ? err.message : String(err);
+        p.log.error(color.red(`extension.toml is not valid TOML: ${message}`));
+        process.exit(1);
+    }
+
+    const extensionId = tomlString(toml, 'id');
+    const extensionName = tomlString(toml, 'name');
+    const repository = tomlString(toml, 'repository');
 
     const results: ValidationResult[] = [];
 
@@ -72,13 +78,15 @@ export async function runCheck(callerDir: string): Promise<void> {
         });
     }
 
-    // Detect language entries by looking for uncommented [grammars.*] sections
-    const grammarMatches = [...tomlContent.matchAll(/^\[grammars\.(\S+)\]/gm)];
+    // Detect language entries via the parsed [grammars.*] table. Commented-out
+    // placeholder blocks (from the scaffold) aren't part of the parsed TOML at
+    // all, so those still need a raw-text scan to detect and report on.
+    const grammarsTable = (toml['grammars'] as Record<string, unknown> | undefined) ?? {};
+    const languageIds = Object.keys(grammarsTable);
     const commentedGrammarMatches = [...tomlContent.matchAll(/^#\s*\[grammars\.(\S+)\]/gm)];
-    const languageIds = grammarMatches.map(m => m[1]);
     const hasLanguage = languageIds.length > 0 || commentedGrammarMatches.length > 0;
 
-    if (commentedGrammarMatches.length > 0 && grammarMatches.length === 0) {
+    if (commentedGrammarMatches.length > 0 && languageIds.length === 0) {
         const ids = commentedGrammarMatches.map(m => m[1]);
         extIssues.push({
             file: 'extension.toml',
@@ -277,10 +285,7 @@ export async function runCheck(callerDir: string): Promise<void> {
 
     if (hasLanguage) {
         // Collect all language IDs from both uncommented and commented grammar sections
-        const allLanguageIds = [
-            ...grammarMatches.map(m => m[1]),
-            ...commentedGrammarMatches.map(m => m[1]),
-        ];
+        const allLanguageIds = [...languageIds, ...commentedGrammarMatches.map(m => m[1])];
 
         for (const langId of allLanguageIds) {
             const langDir = path.join(callerDir, 'languages', langId);
@@ -308,14 +313,25 @@ export async function runCheck(callerDir: string): Promise<void> {
             } else {
                 const configContent = await fs.readFile(configPath, 'utf-8');
 
-                if (!tomlHasUncommentedKey(configContent, 'name')) {
+                let languageConfig: Record<string, unknown> | null = null;
+                try {
+                    languageConfig = parseToml(configContent) as Record<string, unknown>;
+                } catch (err) {
+                    const message = err instanceof TomlError ? err.message : String(err);
+                    configIssues.push({
+                        file: `languages/${langId}/config.toml`,
+                        message: `config.toml is not valid TOML: ${message}`,
+                    });
+                }
+
+                if (languageConfig && !('name' in languageConfig)) {
                     configIssues.push({
                         file: `languages/${langId}/config.toml`,
                         message: 'Missing required field: name',
                     });
                 }
 
-                if (!tomlHasUncommentedKey(configContent, 'grammar')) {
+                if (languageConfig && !('grammar' in languageConfig)) {
                     configIssues.push({
                         file: `languages/${langId}/config.toml`,
                         message: 'Missing required field: grammar',
@@ -323,7 +339,7 @@ export async function runCheck(callerDir: string): Promise<void> {
                 }
 
                 // path_suffixes is commented out in scaffold — flag it
-                if (!tomlHasUncommentedKey(configContent, 'path_suffixes')) {
+                if (languageConfig && !('path_suffixes' in languageConfig)) {
                     configIssues.push({
                         file: `languages/${langId}/config.toml`,
                         message:
@@ -333,7 +349,7 @@ export async function runCheck(callerDir: string): Promise<void> {
                 }
 
                 // line_comments is commented out in scaffold — flag it
-                if (!tomlHasUncommentedKey(configContent, 'line_comments')) {
+                if (languageConfig && !('line_comments' in languageConfig)) {
                     configIssues.push({
                         file: `languages/${langId}/config.toml`,
                         message: "line_comments is not set — toggle-comment keybind won't work",
