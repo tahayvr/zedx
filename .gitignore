@@ -1,7 +1,6 @@
 node_modules/
 dist/
 .DS_Store
-pnpm-workspace.yaml
 *.tgz
 *
 
@@ -16,6 +15,7 @@ pnpm-workspace.yaml
 
 !package.json
 !pnpm-lock.yaml
+!pnpm-workspace.yaml
 !README.md
 !tsconfig.json
 !.oxfmtrc.json
