@@ -23,9 +23,11 @@ export type License =
     | 'Apache-2.0'
     | 'BSD-2-Clause'
     | 'BSD-3-Clause'
+    | 'CC-BY-4.0'
     | 'GPL-3.0'
     | 'LGPL-3.0'
     | 'MIT'
+    | 'Unlicense'
     | 'Zlib';
 
 export interface ExtensionOptions {
