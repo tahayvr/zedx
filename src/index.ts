@@ -10,7 +10,7 @@ import color from 'picocolors';
 
 import { addTheme, addIconTheme, addLanguage } from './add.js';
 import { runCheck } from './check.js';
-import { runConfig, configRepo, configConflict, configFiles } from './config.js';
+import { runConfig, configRepo, configConflict, configFiles, configIgnore } from './config.js';
 import { syncInstall, syncUninstall } from './daemon.js';
 import { generateExtension } from './generator.js';
 import { installDevExtension } from './install.js';
@@ -100,6 +100,7 @@ function printWelcome(): void {
         ['zedx config repo', 'Change your sync repo and branch'],
         ['zedx config conflict', 'Set default conflict resolution strategy'],
         ['zedx config files', 'Set default files zedx sync touches'],
+        ['zedx config ignore', 'Keep settings.json keys per-machine'],
     ];
 
     const extensionCommands: [string, string][] = [
@@ -338,6 +339,13 @@ async function main() {
         .description('Set the default files zedx sync touches')
         .action(async () => {
             await configFiles();
+        });
+
+    configCmd
+        .command('ignore')
+        .description('Keep some settings.json keys per-machine, out of zedx sync')
+        .action(async () => {
+            await configIgnore();
         });
 
     const argv = process.argv.filter(arg => arg !== '--');

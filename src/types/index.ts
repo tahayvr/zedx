@@ -4,7 +4,10 @@ export interface ZedPaths {
     settings: string;
     keymap: string;
     tasks: string;
+    debug: string;
+    agents: string; // user-global AGENTS.md
     snippetsDir: string; // directory of per-language *.json snippet files
+    themesDir: string; // directory of local (non-extension) *.json theme files
     extensionsIndex: string; // local-only: used to bootstrap auto_install_extensions, never synced
 }
 
@@ -14,9 +17,12 @@ export interface SyncConfig {
     syncRepo: string;
     branch: string;
     conflictStrategy?: ConflictStrategy;
-    // Persisted default file selection (group keys: 'settings' | 'keymap' |
-    // 'tasks' | 'snippets'). Undefined/absent means "sync everything".
+    // Persisted default file selection (group keys, see SYNC_FILE_GROUPS).
+    // Undefined/absent means "sync everything".
     files?: string[];
+    // settings.json keys (dot-separated paths) that stay per-machine: never
+    // pushed, and never overwritten by a pull.
+    ignoredSettings?: string[];
 }
 
 export type License =

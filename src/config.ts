@@ -200,7 +200,57 @@ export async function configFiles(): Promise<void> {
     );
 }
 
-type ConfigOption = 'repo' | 'conflict' | 'files';
+// zedx config ignore
+export async function configIgnore(): Promise<void> {
+    console.log('');
+    p.intro(
+        `${color.bgBlue(color.bold(' zedx config ignore '))} ${color.blue('Keep settings keys per-machine…')}`,
+    );
+
+    const existing = await readConfig();
+
+    if (!existing) {
+        p.log.error(
+            color.red('No sync config found. Run ') +
+                color.cyan('zedx sync init') +
+                color.red(' first.'),
+        );
+        process.exit(1);
+    }
+
+    const answer = await p.text({
+        message: 'settings.json keys to keep per-machine (comma-separated, empty for none)',
+        placeholder: 'ui_font_size, buffer_font_size, terminal.font_size',
+        initialValue: (existing.ignoredSettings ?? []).join(', '),
+    });
+
+    if (p.isCancel(answer)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const keys = [
+        ...new Set(
+            String(answer ?? '')
+                .split(',')
+                .map(key => key.trim())
+                .filter(Boolean),
+        ),
+    ];
+
+    const { ignoredSettings: _previous, ...rest } = existing;
+    const updated: PersistedConfig = keys.length > 0 ? { ...rest, ignoredSettings: keys } : rest;
+
+    await writeConfig(updated);
+
+    p.outro(
+        keys.length > 0
+            ? `${color.green('✓')} These settings.json keys now stay per-machine: ${color.cyan(keys.join(', '))}.`
+            : `${color.green('✓')} No keys are ignored — settings.json syncs in full.`,
+    );
+}
+
+type ConfigOption = 'repo' | 'conflict' | 'files' | 'ignore';
 
 // zedx config (interactive menu)
 export async function runConfig(direct?: ConfigOption): Promise<void> {
@@ -216,6 +266,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
 
     if (direct === 'files') {
         await configFiles();
+        return;
+    }
+
+    if (direct === 'ignore') {
+        await configIgnore();
         return;
     }
 
@@ -240,6 +295,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
                 label: 'Sync files',
                 hint: 'Which files zedx sync touches by default',
             },
+            {
+                value: 'ignore',
+                label: 'Per-machine settings',
+                hint: 'settings.json keys that are never synced',
+            },
         ],
     });
 
@@ -254,5 +314,7 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
         await configConflict();
     } else if (option === 'files') {
         await configFiles();
+    } else if (option === 'ignore') {
+        await configIgnore();
     }
 }

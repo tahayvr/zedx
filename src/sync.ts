@@ -3,15 +3,42 @@ import path from 'path';
 
 import * as p from '@clack/prompts';
 import fs from 'fs-extra';
-import { applyEdits, modify, parse, type FormattingOptions, type ParseError } from 'jsonc-parser';
+import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
 import color from 'picocolors';
-import simpleGit from 'simple-git';
+import simpleGit, { type SimpleGit } from 'simple-git';
 
-import type { SyncConfig, ConflictStrategy } from './types/index.js';
+import {
+    applyMergeEdits,
+    detectIndent,
+    diffLines,
+    equalIgnoring,
+    IDENTITY_TRANSFORM,
+    ignoredKeysTransform,
+    isPlainObject,
+    mergeJson,
+    parseJsonc,
+    type FileTransform,
+    type MergeConflict,
+} from './sync-merge.js';
+import type { SyncConfig, ConflictStrategy, ZedPaths } from './types/index.js';
 import { resolveZedPaths } from './zed-paths.js';
+
+export { detectIndent } from './sync-merge.js';
 
 const ZEDX_CONFIG_DIR = path.join(os.homedir(), '.config', 'zedx');
 const ZEDX_CONFIG_PATH = path.join(ZEDX_CONFIG_DIR, 'config.json');
+// Copy of every tracked file as of the last successful sync. Its presence is
+// how a later run tells "deleted on one side" from "never synced", and the
+// settings.json copy is the common ancestor for key-level merges.
+const ZEDX_BASE_DIR = path.join(ZEDX_CONFIG_DIR, 'base');
+// Names the repo and branch the base was taken from. A base from anywhere
+// else says nothing about what was deleted here.
+const ZEDX_BASE_SOURCE_PATH = path.join(ZEDX_BASE_DIR, '.source');
+// Local files are copied here before a sync overwrites or deletes them. Kept
+// outside Zed's config dir because Zed loads every file in themes/.
+const ZEDX_BACKUP_DIR = path.join(ZEDX_CONFIG_DIR, 'backups');
+// How many changed lines of a whole-file conflict to preview before asking.
+const DIFF_PREVIEW_LINES = 40;
 
 // Config helpers
 interface PersistedConfig extends SyncConfig {
@@ -74,43 +101,114 @@ async function listJsonFiles(dir: string): Promise<string[]> {
         .sort();
 }
 
-// Build one SyncFileEntry per snippet filename present on either side.
-// Snippets live as an arbitrarily-named collection of per-language files
-// (~/.config/zed/snippets/*.json) rather than one fixed file, so the entry
-// list has to be discovered from disk instead of being hardcoded.
+// Build one SyncFileEntry per filename present on either side (or in the
+// base, so a file deleted on both sides still gets its base entry cleaned up).
+// Snippets and local themes live as arbitrarily-named collections of files
+// rather than one fixed file, so the entry list has to be discovered from
+// disk instead of being hardcoded.
+async function buildDirFileEntries(
+    dirs: { local: string; remote: string; base?: string },
+    keyPrefix: string,
+    label: string,
+): Promise<SyncFileEntry[]> {
+    const [localFiles, remoteFiles, baseFiles] = await Promise.all([
+        listJsonFiles(dirs.local),
+        listJsonFiles(dirs.remote),
+        dirs.base ? listJsonFiles(dirs.base) : [],
+    ]);
+    const names = [...new Set([...localFiles, ...remoteFiles, ...baseFiles])].sort();
+
+    return names.map(name => ({
+        key: `${keyPrefix}:${name}`,
+        repoPath: path.join(dirs.remote, name),
+        localPath: path.join(dirs.local, name),
+        label: `${label}: ${name}`,
+    }));
+}
+
 export async function buildSnippetFileEntries(
     localSnippetsDir: string,
     remoteSnippetsDir: string,
+    baseSnippetsDir?: string,
 ): Promise<SyncFileEntry[]> {
-    const [localFiles, remoteFiles] = await Promise.all([
-        listJsonFiles(localSnippetsDir),
-        listJsonFiles(remoteSnippetsDir),
-    ]);
-    const names = [...new Set([...localFiles, ...remoteFiles])].sort();
+    return buildDirFileEntries(
+        { local: localSnippetsDir, remote: remoteSnippetsDir, base: baseSnippetsDir },
+        'snippet',
+        'Snippet',
+    );
+}
 
-    return names.map(name => ({
-        key: `snippet:${name}`,
-        repoPath: path.join(remoteSnippetsDir, name),
-        localPath: path.join(localSnippetsDir, name),
-        label: `Snippet: ${name}`,
-    }));
+export async function buildThemeFileEntries(
+    localThemesDir: string,
+    remoteThemesDir: string,
+    baseThemesDir?: string,
+): Promise<SyncFileEntry[]> {
+    return buildDirFileEntries(
+        { local: localThemesDir, remote: remoteThemesDir, base: baseThemesDir },
+        'theme',
+        'Theme',
+    );
+}
+
+// Every file a sync could touch, mapped between the Zed config dir and a
+// checkout of the sync repo.
+async function collectSyncFiles(zedPaths: ZedPaths, repoDir: string): Promise<SyncFileEntry[]> {
+    const fixed = (key: string, name: string, localPath: string, label: string) => ({
+        key,
+        repoPath: path.join(repoDir, name),
+        localPath,
+        label,
+    });
+
+    const [snippetEntries, themeEntries] = await Promise.all([
+        buildSnippetFileEntries(
+            zedPaths.snippetsDir,
+            path.join(repoDir, 'snippets'),
+            path.join(ZEDX_BASE_DIR, 'snippets'),
+        ),
+        buildThemeFileEntries(
+            zedPaths.themesDir,
+            path.join(repoDir, 'themes'),
+            path.join(ZEDX_BASE_DIR, 'themes'),
+        ),
+    ]);
+
+    return [
+        fixed('settings', 'settings.json', zedPaths.settings, 'Settings'),
+        fixed('keymap', 'keymap.json', zedPaths.keymap, 'Key bindings'),
+        fixed('tasks', 'tasks.json', zedPaths.tasks, 'Tasks'),
+        fixed('debug', 'debug.json', zedPaths.debug, 'Debug scenarios'),
+        fixed('agents', 'AGENTS.md', zedPaths.agents, 'Agent rules'),
+        ...snippetEntries,
+        ...themeEntries,
+    ];
 }
 
 // The selectable file groups, shared between `zedx sync select` and
 // `zedx config files` so the two commands never drift out of sync with each
-// other. 'snippets' is a group key, not a literal file — it matches every
-// dynamically discovered `snippet:<filename>` entry (see filterSyncFiles).
+// other. 'snippets' and 'themes' are group keys, not literal files — each
+// matches every dynamically discovered `snippet:<filename>` /
+// `theme:<filename>` entry (see filterSyncFiles).
 export const SYNC_FILE_GROUPS: Array<{ value: string; label: string; hint: string }> = [
     { value: 'settings', label: 'Settings', hint: 'settings.json' },
     { value: 'keymap', label: 'Key bindings', hint: 'keymap.json' },
     { value: 'tasks', label: 'Tasks', hint: 'tasks.json' },
+    { value: 'debug', label: 'Debug scenarios', hint: 'debug.json' },
+    { value: 'agents', label: 'Agent rules', hint: 'AGENTS.md' },
     { value: 'snippets', label: 'Snippets', hint: 'snippets/*.json' },
+    { value: 'themes', label: 'Local themes', hint: 'themes/*.json' },
 ];
 
+// Entry-key prefix of each directory-backed group, mapped to its group key.
+const DIR_GROUP_KEYS: Record<string, string> = {
+    'snippet:': 'snippets',
+    'theme:': 'themes',
+};
+
 // Filter a file list down to the selected group keys. `undefined` means "no
-// selection configured" — sync/show everything. Individual snippet entries
-// (key `snippet:<filename>`) are matched by the 'snippets' group key, since
-// their exact filenames aren't known ahead of time.
+// selection configured" — sync/show everything. Individual snippet and theme
+// entries (key `snippet:<filename>` / `theme:<filename>`) are matched by
+// their group key, since their exact filenames aren't known ahead of time.
 export function filterSyncFiles<T extends { key: string }>(
     allFiles: T[],
     selectedKeys: string[] | undefined,
@@ -119,18 +217,10 @@ export function filterSyncFiles<T extends { key: string }>(
     return allFiles.filter(
         f =>
             selectedKeys.includes(f.key) ||
-            (f.key.startsWith('snippet:') && selectedKeys.includes('snippets')),
+            Object.entries(DIR_GROUP_KEYS).some(
+                ([prefix, group]) => f.key.startsWith(prefix) && selectedKeys.includes(group),
+            ),
     );
-}
-
-// Detect indentation from a JSONC source so edits match the surrounding file.
-// Falls back to two-space indent (Zed's default for settings.json).
-export function detectIndent(src: string): FormattingOptions {
-    const match = src.match(/^([ \t]+)\S/m);
-    if (!match) return { insertSpaces: true, tabSize: 2 };
-    const ws = match[1];
-    if (ws.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
-    return { insertSpaces: true, tabSize: ws.length };
 }
 
 // Pure decision matrix for what to do with a single tracked file, given its
@@ -144,7 +234,11 @@ export type FileSyncDecision =
     | 'in-sync'
     | 'push-local-newer'
     | 'pull-remote-newer'
-    | 'conflict';
+    | 'conflict'
+    | 'delete-remote'
+    | 'delete-local'
+    | 'conflict-local-deleted'
+    | 'conflict-remote-deleted';
 
 export function decideFileSync(params: {
     localExists: boolean;
@@ -153,19 +247,32 @@ export function decideFileSync(params: {
     localMtime: Date;
     remoteMtime: Date;
     lastSync: Date | null;
+    // True when an earlier run left this file in sync, so a side that is now
+    // missing was deleted rather than never there.
+    previouslySynced?: boolean;
 }): FileSyncDecision {
     const { localExists, remoteFileExists, contentsEqual, localMtime, remoteMtime, lastSync } =
         params;
+    const previouslySynced = params.previouslySynced ?? false;
 
     if (!localExists && !remoteFileExists) return 'both-missing';
-    if (localExists && !remoteFileExists) return 'push-new';
-    if (!localExists && remoteFileExists) return 'pull-new';
-    if (contentsEqual) return 'in-sync';
 
     // No lastSync (first sync) means both sides are treated as changed,
     // which — when both exist and differ — falls through to 'conflict'.
     const localChanged = !lastSync || localMtime > lastSync;
     const remoteChanged = !lastSync || remoteMtime > lastSync;
+
+    // One side is gone. A deletion only propagates when the surviving side
+    // hasn't changed since; otherwise the two intents conflict.
+    if (localExists && !remoteFileExists) {
+        if (!previouslySynced) return 'push-new';
+        return localChanged ? 'conflict-remote-deleted' : 'delete-local';
+    }
+    if (!localExists && remoteFileExists) {
+        if (!previouslySynced) return 'pull-new';
+        return remoteChanged ? 'conflict-local-deleted' : 'delete-remote';
+    }
+    if (contentsEqual) return 'in-sync';
 
     if (localChanged && !remoteChanged) return 'push-local-newer';
     if (remoteChanged && !localChanged) return 'pull-remote-newer';
@@ -275,6 +382,185 @@ export async function reconcileAutoInstallExtensions(
     }
 }
 
+function gitErrorMessage(err: unknown): string {
+    return (err instanceof Error ? err.message : String(err)).trim();
+}
+
+// Clone the sync branch into `dir`. Returns false when the remote has no such
+// branch yet (an empty repo, or the first push to a new branch) and throws on
+// any other failure, so a network or auth problem is never mistaken for an
+// empty remote.
+async function cloneRemote(config: SyncConfig, dir: string): Promise<boolean> {
+    let heads: string;
+    try {
+        heads = await simpleGit().listRemote([
+            '--heads',
+            config.syncRepo,
+            `refs/heads/${config.branch}`,
+        ]);
+    } catch (err) {
+        throw new Error(`Could not reach ${config.syncRepo}:\n${gitErrorMessage(err)}`, {
+            cause: err,
+        });
+    }
+    if (!heads.trim()) return false;
+
+    try {
+        await simpleGit(dir).clone(config.syncRepo, dir, ['--branch', config.branch]);
+    } catch (err) {
+        throw new Error(`Could not clone ${config.syncRepo}:\n${gitErrorMessage(err)}`, {
+            cause: err,
+        });
+    }
+    return true;
+}
+
+async function readIfExists(filePath: string): Promise<string | null> {
+    return (await fs.pathExists(filePath)) ? fs.readFile(filePath, 'utf-8') : null;
+}
+
+// What one sync (or status) run knows about the two sides.
+interface SyncContext {
+    git: SimpleGit;
+    repoDir: string;
+    remoteExists: boolean;
+    lastSync: Date | null;
+    ignoredSettings: string[];
+    // The base was recorded against this repo and branch.
+    baseUsable: boolean;
+    // No tracked file exists on that side: a new or reset machine (or a wiped
+    // repo), where a missing file means "not there yet" rather than "deleted".
+    localLooksFresh: boolean;
+    remoteLooksFresh: boolean;
+}
+
+interface FileState {
+    local: string | null;
+    remote: string | null;
+    base: string | null;
+    transform: FileTransform;
+    decision: FileSyncDecision;
+    localMtime: Date;
+    remoteMtime: Date;
+}
+
+function baseSource(config: SyncConfig): string {
+    return `${config.syncRepo}#${config.branch}`;
+}
+
+async function noneExist(paths: string[]): Promise<boolean> {
+    const existing = await Promise.all(paths.map(filePath => fs.pathExists(filePath)));
+    return !existing.some(Boolean);
+}
+
+async function buildSyncContext(
+    config: PersistedConfig,
+    repoDir: string,
+    remoteExists: boolean,
+    allFiles: SyncFileEntry[],
+): Promise<SyncContext> {
+    const recordedSource = await readIfExists(ZEDX_BASE_SOURCE_PATH);
+
+    return {
+        git: simpleGit(repoDir),
+        repoDir,
+        remoteExists,
+        lastSync: config.lastSync ? new Date(config.lastSync) : null,
+        ignoredSettings: config.ignoredSettings ?? [],
+        baseUsable: remoteExists && recordedSource === baseSource(config),
+        localLooksFresh: await noneExist(allFiles.map(f => f.localPath)),
+        remoteLooksFresh: await noneExist(allFiles.map(f => f.repoPath)),
+    };
+}
+
+// Read both sides of a tracked file and run them through the decision matrix.
+// `simulatedLocal` stands in for the on-disk content when a caller wants to
+// know what a sync would do after rewriting the file, without rewriting it.
+async function inspectFile(
+    file: SyncFileEntry,
+    ctx: SyncContext,
+    simulatedLocal?: string,
+): Promise<FileState> {
+    const transform =
+        file.key === 'settings' ? ignoredKeysTransform(ctx.ignoredSettings) : IDENTITY_TRANSFORM;
+    const relPath = path.relative(ctx.repoDir, file.repoPath);
+
+    const onDisk = await readIfExists(file.localPath);
+    const local = simulatedLocal ?? onDisk;
+    const remote = ctx.remoteExists ? await readIfExists(file.repoPath) : null;
+    const base = ctx.baseUsable ? await readIfExists(path.join(ZEDX_BASE_DIR, relPath)) : null;
+
+    const contentsEqual = local !== null && remote !== null && transform.equal(local, remote);
+
+    let localMtime = new Date(0);
+    let remoteMtime = new Date(0);
+
+    if (!contentsEqual) {
+        if (onDisk !== null) {
+            // A simulated rewrite counts as modified now, as the real one would be.
+            localMtime = local === onDisk ? (await fs.stat(file.localPath)).mtime : new Date();
+        }
+        if (remote !== null) {
+            // Use the git commit timestamp for the remote file — the temp dir
+            // mtime is just when git checked it out, not when it was actually
+            // changed, so it can't be used for comparison.
+            try {
+                const gitLog = await ctx.git.log({
+                    file: relPath,
+                    maxCount: 1,
+                    format: { date: '%cI' },
+                });
+                if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
+            } catch {
+                // fall back to epoch — remote will appear unchanged
+            }
+        }
+    }
+
+    const decision = decideFileSync({
+        localExists: local !== null,
+        remoteFileExists: remote !== null,
+        contentsEqual,
+        localMtime,
+        remoteMtime,
+        lastSync: ctx.lastSync,
+        previouslySynced:
+            base !== null &&
+            !(local === null && ctx.localLooksFresh) &&
+            !(remote === null && ctx.remoteLooksFresh),
+    });
+
+    return { local, remote, base, transform, decision, localMtime, remoteMtime };
+}
+
+// Compact one-line rendering of a settings value for conflict prompts.
+function previewValue(value: unknown): string {
+    if (value === undefined) return color.dim('(not set)');
+    const text = JSON.stringify(value);
+    return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+}
+
+function printDiff(local: string, remote: string): void {
+    const diff = diffLines(local, remote);
+    if (!diff) {
+        p.log.message(color.dim('(too many differences to preview)'));
+        return;
+    }
+
+    const changed = diff.filter(line => line.type !== 'same');
+    const lines = changed
+        .slice(0, DIFF_PREVIEW_LINES)
+        .map(line =>
+            line.type === 'local'
+                ? color.green(`local  │ ${line.text}`)
+                : color.cyan(`remote │ ${line.text}`),
+        );
+    if (changed.length > DIFF_PREVIEW_LINES) {
+        lines.push(color.dim(`… ${changed.length - DIFF_PREVIEW_LINES} more changed lines`));
+    }
+    p.log.message(lines.join('\n'));
+}
+
 // zedx sync status
 export async function syncStatus(): Promise<void> {
     console.log('');
@@ -296,47 +582,24 @@ export async function syncStatus(): Promise<void> {
 
     await withTempDir(async tmp => {
         spinner.start(`Fetching ${config.syncRepo}...`);
-        let remoteExists = true;
+        let remoteExists: boolean;
         try {
-            const git = simpleGit(tmp);
-            await git.clone(config.syncRepo, tmp, ['--branch', config.branch]);
-            spinner.stop('Remote fetched.');
-        } catch {
-            remoteExists = false;
-            spinner.stop(color.yellow('Remote is empty or branch not found.'));
+            remoteExists = await cloneRemote(config, tmp);
+        } catch (err) {
+            spinner.stop(color.red('Could not fetch the remote.'));
+            throw err;
         }
-
-        const snippetEntries = await buildSnippetFileEntries(
-            zedPaths.snippetsDir,
-            path.join(tmp, 'snippets'),
+        spinner.stop(
+            remoteExists ? 'Remote fetched.' : color.yellow('Remote branch does not exist yet.'),
         );
 
-        const allFiles: SyncFileEntry[] = [
-            {
-                key: 'settings',
-                repoPath: path.join(tmp, 'settings.json'),
-                localPath: zedPaths.settings,
-                label: 'Settings',
-            },
-            {
-                key: 'keymap',
-                repoPath: path.join(tmp, 'keymap.json'),
-                localPath: zedPaths.keymap,
-                label: 'Key bindings',
-            },
-            {
-                key: 'tasks',
-                repoPath: path.join(tmp, 'tasks.json'),
-                localPath: zedPaths.tasks,
-                label: 'Tasks',
-            },
-            ...snippetEntries,
-        ];
+        const allFiles = await collectSyncFiles(zedPaths, tmp);
 
         // Only report on the files an actual `zedx sync` would touch.
         const files = filterSyncFiles(allFiles, config.files);
 
-        const lastSync = config.lastSync ? new Date(config.lastSync) : null;
+        const ctx = await buildSyncContext(config, tmp, remoteExists, allFiles);
+        const { lastSync } = ctx;
 
         // Track per-file actions needed for the outro message
         const toPush: string[] = [];
@@ -344,14 +607,11 @@ export async function syncStatus(): Promise<void> {
         const toResolve: string[] = [];
 
         for (const file of files) {
-            const localExists = await fs.pathExists(file.localPath);
-            const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
-
             // Mirror runSync's reconcile-before-compare step so status reflects
             // what an actual `zedx sync` would do, without mutating the real
             // settings.json — reconcile a scratch copy instead.
-            let effectiveLocalPath = file.localPath;
-            if (file.key === 'settings' && localExists) {
+            let simulatedLocal: string | undefined;
+            if (file.key === 'settings' && (await fs.pathExists(file.localPath))) {
                 const indexStat = await fs.stat(zedPaths.extensionsIndex).catch(() => null);
                 if (!lastSync || (indexStat && indexStat.mtime > lastSync)) {
                     const scratchPath = path.join(tmp, '.status-settings-scratch.json');
@@ -361,49 +621,21 @@ export async function syncStatus(): Promise<void> {
                         zedPaths.extensionsIndex,
                         true,
                     );
-                    effectiveLocalPath = scratchPath;
+                    simulatedLocal = await fs.readFile(scratchPath, 'utf-8');
                 }
             }
 
-            let contentsEqual = false;
-            let localMtime = new Date(0);
-            let remoteMtime = new Date(0);
-
-            if (localExists && remoteFileExists) {
-                const localContent = await fs.readFile(effectiveLocalPath, 'utf-8');
-                const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
-                contentsEqual = localContent === remoteContent;
-
-                if (!contentsEqual) {
-                    localMtime = (await fs.stat(effectiveLocalPath)).mtime;
-                    if (remoteExists) {
-                        try {
-                            const git = simpleGit(tmp);
-                            const gitLog = await git.log({
-                                file: path.relative(tmp, file.repoPath),
-                                maxCount: 1,
-                                format: { date: '%cI' },
-                            });
-                            if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
-                        } catch {
-                            // fall back to epoch — remote will appear unchanged
-                        }
-                    }
-                }
-            }
-
-            const decision = decideFileSync({
-                localExists,
-                remoteFileExists,
-                contentsEqual,
-                localMtime,
-                remoteMtime,
-                lastSync,
-            });
+            const { decision, localMtime, remoteMtime } = await inspectFile(
+                file,
+                ctx,
+                simulatedLocal,
+            );
 
             switch (decision) {
                 case 'both-missing':
-                    p.log.warn(`${color.bold(file.label)}: not found locally or remotely`);
+                    p.log.info(
+                        `${color.bold(file.label)}: ${color.dim('not present on either side')}`,
+                    );
                     break;
                 case 'push-new':
                     p.log.warn(
@@ -432,9 +664,33 @@ export async function syncStatus(): Promise<void> {
                     );
                     toPull.push(file.label);
                     break;
+                case 'delete-remote':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.green('deleted locally')} — will be removed from remote`,
+                    );
+                    toPush.push(file.label);
+                    break;
+                case 'delete-local':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.cyan('deleted on remote')} — local copy will be removed`,
+                    );
+                    toPull.push(file.label);
+                    break;
                 case 'conflict':
                     p.log.warn(
                         `${color.bold(file.label)}: ${color.yellow('conflict')} — both changed since last sync`,
+                    );
+                    toResolve.push(file.label);
+                    break;
+                case 'conflict-local-deleted':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.yellow('conflict')} — deleted locally, changed on remote`,
+                    );
+                    toResolve.push(file.label);
+                    break;
+                case 'conflict-remote-deleted':
+                    p.log.warn(
+                        `${color.bold(file.label)}: ${color.yellow('conflict')} — deleted on remote, changed locally`,
                     );
                     toResolve.push(file.label);
                     break;
@@ -573,6 +829,8 @@ export async function runSync(
 
     // Conflict priority: explicit CLI flag > persisted config > default (ask)
     const conflict: ConflictStrategy = opts.conflict ?? config.conflictStrategy ?? 'ask';
+    const strategy = resolveConflictStrategy(conflict, silent);
+    const ignoredSettings = config.ignoredSettings ?? [];
 
     // In silent mode (daemon/watch), route all UI through plain console.log
     // Interactive conflict prompts fall back to "local wins".
@@ -607,65 +865,204 @@ export async function runSync(
     await withTempDir(async tmp => {
         // 1. Clone the remote repo
         const git = simpleGit(tmp);
-        let remoteExists = true;
 
         spinner.start(`Fetching ${config.syncRepo}...`);
+        let remoteExists: boolean;
         try {
-            await git.clone(config.syncRepo, tmp, ['--branch', config.branch]);
+            remoteExists = await cloneRemote(config, tmp);
+        } catch (err) {
+            spinner.stop(color.red('Could not fetch the remote — nothing was changed.'));
+            throw err;
+        }
+
+        if (remoteExists) {
             spinner.stop('Remote fetched.');
-        } catch {
-            remoteExists = false;
-            spinner.stop('Remote is empty or branch not found — will push fresh.');
+        } else {
+            spinner.stop('Remote branch does not exist yet — will push fresh.');
             await git.init();
+            // `git init` picks its own default branch name; the push below
+            // needs the configured one.
+            await git.raw(['symbolic-ref', 'HEAD', `refs/heads/${config.branch}`]);
             await git.addRemote('origin', config.syncRepo);
         }
 
         // 2. Determine what changed for each file
-        const lastSync = config.lastSync ? new Date(config.lastSync) : null;
-
-        const snippetEntries = await buildSnippetFileEntries(
-            zedPaths.snippetsDir,
-            path.join(tmp, 'snippets'),
-        );
-
-        const allFiles: SyncFileEntry[] = [
-            {
-                key: 'settings',
-                repoPath: path.join(tmp, 'settings.json'),
-                localPath: zedPaths.settings,
-                label: 'Settings',
-            },
-            {
-                key: 'keymap',
-                repoPath: path.join(tmp, 'keymap.json'),
-                localPath: zedPaths.keymap,
-                label: 'Key bindings',
-            },
-            {
-                key: 'tasks',
-                repoPath: path.join(tmp, 'tasks.json'),
-                localPath: zedPaths.tasks,
-                label: 'Tasks',
-            },
-            ...snippetEntries,
-        ];
+        const allFiles = await collectSyncFiles(zedPaths, tmp);
 
         // An explicit --select-style call wins; otherwise fall back to the
         // persisted default from `zedx config files` (undefined means sync
         // everything).
         const files = filterSyncFiles(allFiles, selectedFiles ?? config.files);
 
+        const ctx = await buildSyncContext(config, tmp, remoteExists, allFiles);
+        const { lastSync } = ctx;
+        // A base recorded against another repo or branch (or a remote that
+        // has no branch yet) describes nothing here; start it over.
+        if (!ctx.baseUsable) await fs.remove(ZEDX_BASE_DIR);
+
+        const relPath = (file: SyncFileEntry) => path.relative(tmp, file.repoPath);
+
         let anyChanges = false;
+        const removedFromRepo: string[] = [];
+        // Files this run left identical on both sides (or gone from both).
+        const settled: SyncFileEntry[] = [];
+
+        const backupLocal = async (file: SyncFileEntry) => {
+            const backupPath = path.join(ZEDX_BACKUP_DIR, relPath(file));
+            await fs.copy(file.localPath, backupPath, { overwrite: true });
+            if (!silent) p.log.info(`Backed up ${file.label} to ${color.dim(backupPath)}`);
+        };
+        const writeRepo = async (file: SyncFileEntry, content: string) => {
+            await fs.outputFile(file.repoPath, content, 'utf-8');
+            anyChanges = true;
+        };
+        const writeLocal = async (file: SyncFileEntry, content: string, backup: boolean) => {
+            if (backup) await backupLocal(file);
+            await fs.outputFile(file.localPath, content, 'utf-8');
+        };
+        const removeRepo = async (file: SyncFileEntry) => {
+            await fs.remove(file.repoPath);
+            removedFromRepo.push(relPath(file));
+            anyChanges = true;
+        };
+        const removeLocal = async (file: SyncFileEntry) => {
+            await backupLocal(file);
+            await fs.remove(file.localPath);
+        };
+
+        // Settle a conflict between the two sides: by strategy when one is
+        // set (or the run is unattended), otherwise by asking.
+        const pickSide = async (
+            file: SyncFileEntry,
+            situation: string,
+            options: { local: string; remote: string },
+            hints: { local?: string; remote?: string } = {},
+        ): Promise<'local' | 'remote'> => {
+            if (strategy !== 'ask') {
+                log.warn(
+                    conflict === 'ask'
+                        ? `${file.label} ${situation} — unattended run, keeping local.`
+                        : `${file.label} ${situation} — using ${color.bold(strategy)}.`,
+                );
+                return strategy;
+            }
+
+            p.log.warn(color.yellow(`${file.label} ${situation}`));
+            const choice = await p.select({
+                message: `What should happen to ${color.bold(file.label)}?`,
+                options: [
+                    { value: 'local', label: options.local, hint: hints.local },
+                    { value: 'remote', label: options.remote, hint: hints.remote },
+                ],
+            });
+            if (p.isCancel(choice)) {
+                p.cancel('Cancelled.');
+                process.exit(0);
+            }
+            return choice as 'local' | 'remote';
+        };
+
+        // Key-level merge of settings.json: changes made on one side only are
+        // combined, and only keys both sides changed need a decision. Returns
+        // null when the file can't be merged that way, so the caller falls
+        // back to choosing a whole file.
+        const mergeSettings = async (
+            local: string,
+            remote: string,
+            base: string | null,
+        ): Promise<{ text: string; summary: string } | null> => {
+            const localValue = parseJsonc(local);
+            const remoteValue = parseJsonc(remote);
+            if (!isPlainObject(localValue) || !isPlainObject(remoteValue)) return null;
+            // Same values, different text (comments, formatting): nothing to
+            // merge key by key.
+            if (equalIgnoring(localValue, remoteValue, ignoredSettings)) return null;
+
+            const baseValue = base === null ? undefined : parseJsonc(base);
+            const { edits, conflicts } = mergeJson(
+                baseValue,
+                localValue,
+                remoteValue,
+                ignoredSettings,
+            );
+
+            let fromRemote: MergeConflict[] = [];
+            if (conflicts.length > 0 && strategy === 'remote') {
+                fromRemote = conflicts;
+            } else if (conflicts.length > 0 && strategy === 'ask') {
+                p.log.warn(
+                    color.yellow(
+                        `Settings: ${conflicts.length} key${conflicts.length === 1 ? '' : 's'} changed on both sides`,
+                    ),
+                );
+                p.log.message(
+                    conflicts
+                        .map(
+                            c =>
+                                `${color.bold(c.keyPath.join('.'))}\n` +
+                                `  ${color.green('local ')} ${previewValue(c.local)}\n` +
+                                `  ${color.cyan('remote')} ${previewValue(c.remote)}`,
+                        )
+                        .join('\n'),
+                );
+
+                const choice = await p.select({
+                    message: 'Which side should win for these keys?',
+                    options: [
+                        { value: 'local', label: 'Keep local for all' },
+                        { value: 'remote', label: 'Use remote for all' },
+                        ...(conflicts.length > 1
+                            ? [{ value: 'each', label: 'Choose for each key' }]
+                            : []),
+                    ],
+                });
+                if (p.isCancel(choice)) {
+                    p.cancel('Cancelled.');
+                    process.exit(0);
+                }
+
+                if (choice === 'remote') {
+                    fromRemote = conflicts;
+                } else if (choice === 'each') {
+                    for (const c of conflicts) {
+                        const side = await p.select({
+                            message: `${color.bold(c.keyPath.join('.'))}`,
+                            options: [
+                                { value: 'local', label: `Local: ${previewValue(c.local)}` },
+                                { value: 'remote', label: `Remote: ${previewValue(c.remote)}` },
+                            ],
+                        });
+                        if (p.isCancel(side)) {
+                            p.cancel('Cancelled.');
+                            process.exit(0);
+                        }
+                        if (side === 'remote') fromRemote.push(c);
+                    }
+                }
+            } else if (conflicts.length > 0) {
+                log.warn(
+                    `Settings: ${conflicts.length} key(s) changed on both sides — keeping local for those.`,
+                );
+            }
+
+            const text = applyMergeEdits(local, [
+                ...edits,
+                ...fromRemote.map(c => ({ keyPath: c.keyPath, value: c.remote })),
+            ]);
+            const summary =
+                `${edits.length} change${edits.length === 1 ? '' : 's'} from remote` +
+                (conflicts.length > 0
+                    ? `, ${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'} resolved`
+                    : '');
+            return { text, summary };
+        };
 
         for (const file of files) {
-            const localExists = await fs.pathExists(file.localPath);
-            const remoteFileExists = remoteExists && (await fs.pathExists(file.repoPath));
-
             // Reconcile auto_install_extensions before content comparison so newly
             // installed/uninstalled extensions show up as drift and follow the normal
             // push path, rather than being swallowed by the "already in sync" check.
             // Gated on the extensions index mtime so most syncs skip the parse entirely.
-            if (file.key === 'settings' && localExists) {
+            if (file.key === 'settings' && (await fs.pathExists(file.localPath))) {
                 const indexStat = await fs.stat(zedPaths.extensionsIndex).catch(() => null);
                 if (!lastSync || (indexStat && indexStat.mtime > lastSync)) {
                     await reconcileAutoInstallExtensions(
@@ -676,166 +1073,126 @@ export async function runSync(
                 }
             }
 
-            // Both exist — compare content and mtimes up front so the decision
-            // matrix (decideFileSync) has everything it needs.
-            let contentsEqual = false;
-            let localMtime = new Date(0);
-            let remoteMtime = new Date(0);
+            const state = await inspectFile(file, ctx);
+            const { transform, localMtime, remoteMtime } = state;
+            // Each decision implies which sides exist; the fallbacks only
+            // keep the types honest.
+            const local = state.local ?? '';
+            const remote = state.remote ?? '';
 
-            if (localExists && remoteFileExists) {
-                const localContent = await fs.readFile(file.localPath, 'utf-8');
-                const remoteContent = await fs.readFile(file.repoPath, 'utf-8');
-                contentsEqual = localContent === remoteContent;
+            switch (state.decision) {
+                case 'both-missing':
+                    // Most of the tracked files are optional; nothing to do
+                    // or report when neither side has one.
+                    break;
 
-                if (!contentsEqual) {
-                    // Use local mtime for local file, and the git commit timestamp for
-                    // the remote file — the temp dir mtime is just when git checked it
-                    // out, not when it was actually changed, so it can't be used for
-                    // comparison.
-                    localMtime = (await fs.stat(file.localPath)).mtime;
-                    if (remoteExists) {
-                        try {
-                            const gitLog = await git.log({
-                                file: path.relative(tmp, file.repoPath),
-                                maxCount: 1,
-                                format: { date: '%cI' },
-                            });
-                            if (gitLog.latest?.date) remoteMtime = new Date(gitLog.latest.date);
-                        } catch {
-                            // fall back to epoch — remote will appear unchanged
+                case 'push-new':
+                    log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
+                    await writeRepo(file, transform.toRemote(local, null));
+                    break;
+
+                case 'pull-new':
+                    log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
+                    await writeLocal(file, transform.toLocal(remote, null), false);
+                    break;
+
+                case 'in-sync':
+                    log.success(`${file.label}: ${color.dim('already in sync')}`);
+                    break;
+
+                case 'push-local-newer':
+                    log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
+                    await writeRepo(file, transform.toRemote(local, remote));
+                    break;
+
+                case 'pull-remote-newer':
+                    log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
+                    await writeLocal(file, transform.toLocal(remote, local), true);
+                    break;
+
+                case 'delete-remote':
+                    log.info(
+                        `${file.label}: ${color.green('removing from remote')} (deleted locally)`,
+                    );
+                    await removeRepo(file);
+                    break;
+
+                case 'delete-local':
+                    log.info(
+                        `${file.label}: ${color.cyan('removing local copy')} (deleted on remote)`,
+                    );
+                    await removeLocal(file);
+                    break;
+
+                case 'conflict-local-deleted': {
+                    const side = await pickSide(
+                        file,
+                        'was deleted locally but changed on the remote',
+                        { local: 'Delete it on the remote too', remote: 'Restore it from remote' },
+                    );
+                    if (side === 'local') await removeRepo(file);
+                    else await writeLocal(file, transform.toLocal(remote, null), false);
+                    break;
+                }
+
+                case 'conflict-remote-deleted': {
+                    const side = await pickSide(
+                        file,
+                        'was deleted on the remote but changed locally',
+                        { local: 'Keep it and push it again', remote: 'Delete the local copy' },
+                    );
+                    if (side === 'local') await writeRepo(file, transform.toRemote(local, null));
+                    else await removeLocal(file);
+                    break;
+                }
+
+                case 'conflict': {
+                    if (file.key === 'settings') {
+                        const merged = await mergeSettings(local, remote, state.base);
+                        if (merged) {
+                            if (merged.text !== local) await writeLocal(file, merged.text, true);
+                            const nextRemote = transform.toRemote(merged.text, remote);
+                            if (nextRemote !== remote) await writeRepo(file, nextRemote);
+                            log.info(
+                                `${file.label}: ${color.magenta('merged')} (${merged.summary})`,
+                            );
+                            break;
                         }
                     }
-                }
-            }
 
-            const decision = decideFileSync({
-                localExists,
-                remoteFileExists,
-                contentsEqual,
-                localMtime,
-                remoteMtime,
-                lastSync,
-            });
-
-            if (decision === 'both-missing') {
-                log.warn(`${file.label}: not found locally or remotely — skipping.`);
-                continue;
-            }
-
-            if (decision === 'push-new') {
-                log.info(`${file.label}: ${color.green('pushing')} (not in remote yet)`);
-                await fs.ensureDir(path.dirname(file.repoPath));
-                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                anyChanges = true;
-                continue;
-            }
-
-            if (decision === 'pull-new') {
-                log.info(`${file.label}: ${color.cyan('pulling')} (not found locally)`);
-                if (await fs.pathExists(file.localPath)) {
-                    await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
-                    if (!silent)
-                        p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
-                }
-                await fs.ensureDir(path.dirname(file.localPath));
-                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                continue;
-            }
-
-            if (decision === 'in-sync') {
-                log.success(`${file.label}: ${color.dim('already in sync')}`);
-                continue;
-            }
-
-            if (decision === 'push-local-newer') {
-                log.info(`${file.label}: ${color.green('pushing')} (local is newer)`);
-                await fs.ensureDir(path.dirname(file.repoPath));
-                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                anyChanges = true;
-                continue;
-            }
-
-            if (decision === 'pull-remote-newer') {
-                log.info(`${file.label}: ${color.cyan('pulling')} (remote is newer)`);
-                await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
-                if (!silent)
-                    p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
-                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-                continue;
-            }
-
-            // decision === 'conflict' — resolve based on strategy
-            const strategy = resolveConflictStrategy(conflict, silent);
-            let resolution: 'local' | 'remote';
-
-            if (strategy === 'local' || strategy === 'remote') {
-                resolution = strategy;
-                if (conflict === 'local' || conflict === 'remote') {
-                    log.warn(
-                        `${file.label}: conflict — using ${color.bold(resolution)} (--${resolution} flag).`,
-                    );
-                } else {
-                    log.warn(
-                        `${file.label}: conflict detected in unattended mode — keeping local.`,
-                    );
-                }
-            } else {
-                p.log.warn(color.yellow(`conflict between local and remote ${file.label}`));
-
-                const choice = await p.select({
-                    message: `Which version of ${color.bold(file.label)} should win?`,
-                    options: [
+                    if (strategy === 'ask') printDiff(local, remote);
+                    const side = await pickSide(
+                        file,
+                        'changed on both sides',
+                        { local: 'Keep local', remote: 'Use remote' },
                         {
-                            value: 'local',
-                            label: 'Keep local',
-                            hint: `modified ${localMtime.toLocaleString()}`,
+                            local: `modified ${localMtime.toLocaleString()}`,
+                            remote: `modified ${remoteMtime.toLocaleString()}`,
                         },
-                        {
-                            value: 'remote',
-                            label: 'Use remote',
-                            hint: `modified ${remoteMtime.toLocaleString()}`,
-                        },
-                    ],
-                });
-
-                if (p.isCancel(choice)) {
-                    p.cancel('Cancelled.');
-                    process.exit(0);
+                    );
+                    if (side === 'local') await writeRepo(file, transform.toRemote(local, remote));
+                    else await writeLocal(file, transform.toLocal(remote, local), true);
+                    break;
                 }
-
-                resolution = choice as 'local' | 'remote';
             }
 
-            if (resolution === 'local') {
-                if (!silent && conflict === 'ask')
-                    p.log.info(`${file.label}: ${color.green('keeping local, will push')}`);
-                await fs.ensureDir(path.dirname(file.repoPath));
-                await fs.copy(file.localPath, file.repoPath, { overwrite: true });
-                anyChanges = true;
-            } else {
-                if (!silent && conflict === 'ask')
-                    p.log.info(`${file.label}: ${color.cyan('applying remote')}`);
-                await fs.copy(file.localPath, file.localPath + '.bak', { overwrite: true });
-                if (!silent)
-                    p.log.info(`Backed up settings to ${color.dim(file.localPath + '.bak')}`);
-                await fs.copy(file.repoPath, file.localPath, { overwrite: true });
-            }
+            settled.push(file);
         }
 
         // 3. Commit + push if any local files were written to the repo
         if (anyChanges) {
             spinner.start('Pushing changes to remote...');
             try {
-                // Only stage files that were actually written to the temp repo —
-                // `files` includes every tracked key regardless of whether this
-                // sync touched it, and `git add` throws on a pathspec that
-                // matches nothing.
-                const stageable: string[] = [];
+                // Only stage paths this sync could have touched — `files`
+                // includes every tracked key regardless of whether it exists,
+                // and `git add` throws on a pathspec that matches nothing.
+                // Removed files are staged by path too, which records the
+                // deletion.
+                const stageable: string[] = [...removedFromRepo];
                 for (const f of files) {
-                    if (await fs.pathExists(f.repoPath))
-                        stageable.push(path.relative(tmp, f.repoPath));
+                    if (await fs.pathExists(f.repoPath)) stageable.push(relPath(f));
                 }
-                if (stageable.length > 0) await git.add(stageable);
+                if (stageable.length > 0) await git.raw(['add', '-A', '--', ...stageable]);
 
                 const status = await git.status();
                 if (status.staged.length > 0) {
@@ -868,9 +1225,21 @@ export async function runSync(
                 throw err;
             }
         }
+
+        // 4. Record what both sides now agree on, for the next run's deletion
+        // detection and settings merge.
+        await fs.outputFile(ZEDX_BASE_SOURCE_PATH, baseSource(config), 'utf-8');
+        for (const file of settled) {
+            const basePath = path.join(ZEDX_BASE_DIR, relPath(file));
+            if (await fs.pathExists(file.repoPath)) {
+                await fs.copy(file.repoPath, basePath, { overwrite: true });
+            } else {
+                await fs.remove(basePath);
+            }
+        }
     });
 
-    // 4. Save last sync timestamp
+    // 5. Save last sync timestamp
     await writeSyncConfig({ ...config, lastSync: new Date().toISOString() });
 
     if (!silent) p.outro(`${color.green('✓')} Sync complete.`);

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
     buildSnippetFileEntries,
+    buildThemeFileEntries,
     decideFileSync,
     detectIndent,
     filterSyncFiles,
@@ -272,6 +273,41 @@ describe('decideFileSync', () => {
         );
     });
 
+    describe('when the file was in sync after an earlier run', () => {
+        const synced = { ...base, previouslySynced: true };
+
+        it('removes the remote copy when the file was deleted locally', () => {
+            expect(decideFileSync({ ...synced, localExists: false })).toBe('delete-remote');
+        });
+
+        it('removes the local copy when the file was deleted on the remote', () => {
+            expect(decideFileSync({ ...synced, remoteFileExists: false })).toBe('delete-local');
+        });
+
+        it('reports a conflict when it was deleted locally but changed on the remote', () => {
+            expect(decideFileSync({ ...synced, localExists: false, remoteMtime: after })).toBe(
+                'conflict-local-deleted',
+            );
+        });
+
+        it('reports a conflict when it was deleted on the remote but changed locally', () => {
+            expect(decideFileSync({ ...synced, remoteFileExists: false, localMtime: after })).toBe(
+                'conflict-remote-deleted',
+            );
+        });
+
+        it('still reports both-missing when it is gone from both sides', () => {
+            expect(decideFileSync({ ...synced, localExists: false, remoteFileExists: false })).toBe(
+                'both-missing',
+            );
+        });
+
+        it('does not change the outcome while both sides still exist', () => {
+            expect(decideFileSync({ ...synced, localMtime: after })).toBe('push-local-newer');
+            expect(decideFileSync({ ...synced, contentsEqual: true })).toBe('in-sync');
+        });
+    });
+
     it('treats both sides as changed when there is no lastSync yet', () => {
         expect(
             decideFileSync({ ...base, lastSync: null, localMtime: before, remoteMtime: before }),
@@ -374,6 +410,47 @@ describe('buildSnippetFileEntries', () => {
     });
 });
 
+describe('directory-backed file entries', () => {
+    let tmp: string;
+    let localDir: string;
+    let remoteDir: string;
+    let baseDir: string;
+
+    beforeEach(async () => {
+        tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'zedx-dir-entries-test-'));
+        localDir = path.join(tmp, 'local');
+        remoteDir = path.join(tmp, 'remote');
+        baseDir = path.join(tmp, 'base');
+    });
+
+    afterEach(async () => {
+        await fs.remove(tmp);
+    });
+
+    it('includes files that only remain in the base, so their deletion can be recorded', async () => {
+        await fs.ensureDir(baseDir);
+        await fs.writeFile(path.join(baseDir, 'go.json'), '{}');
+
+        const entries = await buildSnippetFileEntries(localDir, remoteDir, baseDir);
+
+        expect(entries.map(e => e.key)).toEqual(['snippet:go.json']);
+    });
+
+    it('builds theme entries under the theme: key prefix', async () => {
+        await fs.ensureDir(localDir);
+        await fs.writeFile(path.join(localDir, 'midnight.json'), '{}');
+
+        expect(await buildThemeFileEntries(localDir, remoteDir)).toEqual([
+            {
+                key: 'theme:midnight.json',
+                repoPath: path.join(remoteDir, 'midnight.json'),
+                localPath: path.join(localDir, 'midnight.json'),
+                label: 'Theme: midnight.json',
+            },
+        ]);
+    });
+});
+
 describe('filterSyncFiles', () => {
     const files = [
         { key: 'settings' },
@@ -382,6 +459,15 @@ describe('filterSyncFiles', () => {
         { key: 'snippet:python.json' },
         { key: 'snippet:rust.json' },
     ];
+
+    it('matches every theme entry via the "themes" group key', () => {
+        const withThemes = [...files, { key: 'theme:midnight.json' }, { key: 'debug' }];
+
+        expect(filterSyncFiles(withThemes, ['themes', 'debug'])).toEqual([
+            { key: 'theme:midnight.json' },
+            { key: 'debug' },
+        ]);
+    });
 
     it('returns everything when no selection is given', () => {
         expect(filterSyncFiles(files, undefined)).toEqual(files);

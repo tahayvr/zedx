@@ -39,7 +39,10 @@ describe('resolveZedPaths', () => {
         expect(paths.settings).toBe(path.join(configDir, 'settings.json'));
         expect(paths.keymap).toBe(path.join(configDir, 'keymap.json'));
         expect(paths.tasks).toBe(path.join(configDir, 'tasks.json'));
+        expect(paths.debug).toBe(path.join(configDir, 'debug.json'));
+        expect(paths.agents).toBe(path.join(configDir, 'AGENTS.md'));
         expect(paths.snippetsDir).toBe(path.join(configDir, 'snippets'));
+        expect(paths.themesDir).toBe(path.join(configDir, 'themes'));
         expect(paths.extensionsIndex).toBe(
             path.join(HOME, 'Library', 'Application Support', 'Zed', 'extensions', 'index.json'),
         );
@@ -53,7 +56,10 @@ describe('resolveZedPaths', () => {
         expect(paths.settings).toBe(path.join(configDir, 'settings.json'));
         expect(paths.keymap).toBe(path.join(configDir, 'keymap.json'));
         expect(paths.tasks).toBe(path.join(configDir, 'tasks.json'));
+        expect(paths.debug).toBe(path.join(configDir, 'debug.json'));
+        expect(paths.agents).toBe(path.join(configDir, 'AGENTS.md'));
         expect(paths.snippetsDir).toBe(path.join(configDir, 'snippets'));
+        expect(paths.themesDir).toBe(path.join(configDir, 'themes'));
         expect(paths.extensionsIndex).toBe(
             path.join(HOME, '.local', 'share', 'zed', 'extensions', 'index.json'),
         );
@@ -91,7 +97,10 @@ describe('resolveZedPaths', () => {
         expect(paths.settings).toBe(path.join(configDir, 'settings.json'));
         expect(paths.keymap).toBe(path.join(configDir, 'keymap.json'));
         expect(paths.tasks).toBe(path.join(configDir, 'tasks.json'));
+        expect(paths.debug).toBe(path.join(configDir, 'debug.json'));
+        expect(paths.agents).toBe(path.join(configDir, 'AGENTS.md'));
         expect(paths.snippetsDir).toBe(path.join(configDir, 'snippets'));
+        expect(paths.themesDir).toBe(path.join(configDir, 'themes'));
         expect(paths.extensionsIndex).toBe(
             path.join(HOME, '.local', 'share', 'zed', 'extensions', 'index.json'),
         );
@@ -116,7 +125,10 @@ describe('resolveZedPaths', () => {
         expect(paths.settings).toBe(path.join(configDir, 'settings.json'));
         expect(paths.keymap).toBe(path.join(configDir, 'keymap.json'));
         expect(paths.tasks).toBe(path.join(configDir, 'tasks.json'));
+        expect(paths.debug).toBe(path.join(configDir, 'debug.json'));
+        expect(paths.agents).toBe(path.join(configDir, 'AGENTS.md'));
         expect(paths.snippetsDir).toBe(path.join(configDir, 'snippets'));
+        expect(paths.themesDir).toBe(path.join(configDir, 'themes'));
         expect(paths.extensionsIndex).toBe(
             path.join(HOME, 'AppData', 'Local', 'Zed', 'extensions', 'index.json'),
         );
