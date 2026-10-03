@@ -17,6 +17,8 @@ describe('resolveZedPaths', () => {
 
     beforeEach(() => {
         vi.spyOn(os, 'homedir').mockReturnValue(HOME);
+        delete process.env.XDG_CONFIG_HOME;
+        delete process.env.FLATPAK_XDG_CONFIG_HOME;
         delete process.env.XDG_DATA_HOME;
         delete process.env.FLATPAK_XDG_DATA_HOME;
         delete process.env.APPDATA;
@@ -78,6 +80,30 @@ describe('resolveZedPaths', () => {
         expect(paths.extensionsIndex).toBe(
             path.join('/flatpak/data', 'zed', 'extensions', 'index.json'),
         );
+    });
+
+    it('honors XDG_CONFIG_HOME for the Linux config dir, without affecting the extensions index', () => {
+        setPlatform('linux');
+        process.env.XDG_CONFIG_HOME = '/custom/config';
+        const paths = resolveZedPaths();
+
+        const configDir = path.join('/custom/config', 'zed');
+        expect(paths.settings).toBe(path.join(configDir, 'settings.json'));
+        expect(paths.keymap).toBe(path.join(configDir, 'keymap.json'));
+        expect(paths.tasks).toBe(path.join(configDir, 'tasks.json'));
+        expect(paths.snippetsDir).toBe(path.join(configDir, 'snippets'));
+        expect(paths.extensionsIndex).toBe(
+            path.join(HOME, '.local', 'share', 'zed', 'extensions', 'index.json'),
+        );
+    });
+
+    it('prefers FLATPAK_XDG_CONFIG_HOME over XDG_CONFIG_HOME on Linux', () => {
+        setPlatform('linux');
+        process.env.XDG_CONFIG_HOME = '/custom/config';
+        process.env.FLATPAK_XDG_CONFIG_HOME = '/flatpak/config';
+        const paths = resolveZedPaths();
+
+        expect(paths.settings).toBe(path.join('/flatpak/config', 'zed', 'settings.json'));
     });
 
     it('resolves Windows paths under %APPDATA%/Zed, with the extensions index under %LOCALAPPDATA%', () => {

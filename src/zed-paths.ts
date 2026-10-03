@@ -30,7 +30,11 @@ export function resolveZedPaths(): ZedPaths {
             process.env.FLATPAK_XDG_DATA_HOME ||
             process.env.XDG_DATA_HOME ||
             path.join(home, '.local', 'share');
-        const configDir = path.join(home, '.config', 'zed');
+        const xdgConfig =
+            process.env.FLATPAK_XDG_CONFIG_HOME ||
+            process.env.XDG_CONFIG_HOME ||
+            path.join(home, '.config');
+        const configDir = path.join(xdgConfig, 'zed');
 
         return {
             settings: path.join(configDir, 'settings.json'),
