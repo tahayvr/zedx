@@ -20,6 +20,12 @@ const SYSTEMD_SERVICE_NAME = 'zedx-sync';
 const SYSTEMD_UNIT_DIR = path.join(os.homedir(), '.config', 'systemd', 'user');
 const SYSTEMD_SERVICE_PATH = path.join(SYSTEMD_UNIT_DIR, `${SYSTEMD_SERVICE_NAME}.service`);
 const SYSTEMD_PATH_PATH = path.join(SYSTEMD_UNIT_DIR, `${SYSTEMD_SERVICE_NAME}.path`);
+const SYSTEMD_TIMER_PATH = path.join(SYSTEMD_UNIT_DIR, `${SYSTEMD_SERVICE_NAME}.timer`);
+
+// The launchd/systemd watchers only fire on a local change, so changes pushed
+// from another machine would otherwise wait until something is edited here.
+// A periodic run picks those up.
+const PULL_INTERVAL_MINUTES = 15;
 
 const WINDOWS_TASK_NAME = 'ZedxSync';
 // Windows Task Scheduler has no lightweight equivalent to launchd's
@@ -73,6 +79,9 @@ function buildPlist(zedxBin: string, watchPaths: string[]): string {
     <array>
 ${watchEntries}
     </array>
+
+    <key>StartInterval</key>
+    <integer>${PULL_INTERVAL_MINUTES * 60}</integer>
 
     <key>ThrottleInterval</key>
     <integer>30</integer>
@@ -155,17 +164,34 @@ WantedBy=default.target
 `;
 }
 
+function buildSystemdTimer(): string {
+    return `[Unit]
+Description=Periodically pull Zed config changes with zedx
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${PULL_INTERVAL_MINUTES}min
+Unit=${SYSTEMD_SERVICE_NAME}.service
+
+[Install]
+WantedBy=timers.target
+`;
+}
+
 async function installLinux(zedxBin: string, watchPaths: string[]): Promise<void> {
     await fs.ensureDir(SYSTEMD_UNIT_DIR);
 
     await fs.writeFile(SYSTEMD_SERVICE_PATH, buildSystemdService(zedxBin), 'utf-8');
     await fs.writeFile(SYSTEMD_PATH_PATH, buildSystemdPath(watchPaths), 'utf-8');
+    await fs.writeFile(SYSTEMD_TIMER_PATH, buildSystemdTimer(), 'utf-8');
 
     execSync('systemctl --user daemon-reload');
     execSync(`systemctl --user enable --now ${SYSTEMD_SERVICE_NAME}.path`);
+    execSync(`systemctl --user enable --now ${SYSTEMD_SERVICE_NAME}.timer`);
 
     p.log.success(`Service installed: ${color.dim(SYSTEMD_SERVICE_PATH)}`);
     p.log.success(`Path unit installed: ${color.dim(SYSTEMD_PATH_PATH)}`);
+    p.log.success(`Timer installed: ${color.dim(SYSTEMD_TIMER_PATH)}`);
     p.log.info(
         `To check status: ${color.cyan(`systemctl --user status ${SYSTEMD_SERVICE_NAME}.path`)}`,
     );
@@ -175,8 +201,9 @@ async function installLinux(zedxBin: string, watchPaths: string[]): Promise<void
 async function uninstallLinux(): Promise<void> {
     const serviceExists = await fs.pathExists(SYSTEMD_SERVICE_PATH);
     const pathExists = await fs.pathExists(SYSTEMD_PATH_PATH);
+    const timerExists = await fs.pathExists(SYSTEMD_TIMER_PATH);
 
-    if (!serviceExists && !pathExists) {
+    if (!serviceExists && !pathExists && !timerExists) {
         p.log.warn(color.yellow('No systemd units found — nothing to uninstall.'));
         return;
     }
@@ -187,8 +214,15 @@ async function uninstallLinux(): Promise<void> {
         /* already inactive */
     }
 
+    try {
+        execSync(`systemctl --user disable --now ${SYSTEMD_SERVICE_NAME}.timer`, { stdio: 'pipe' });
+    } catch {
+        /* already inactive, or installed before the timer existed */
+    }
+
     if (serviceExists) await fs.remove(SYSTEMD_SERVICE_PATH);
     if (pathExists) await fs.remove(SYSTEMD_PATH_PATH);
+    if (timerExists) await fs.remove(SYSTEMD_TIMER_PATH);
 
     execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
     p.log.success('Daemon uninstalled.');
@@ -262,17 +296,26 @@ export async function syncInstall(): Promise<void> {
     }
 
     const zedPaths = resolveZedPaths();
-    // Snippets are watched as a directory rather than individual files, since
-    // the set of snippet filenames isn't fixed. Note this only reliably
-    // catches files being added/removed/renamed — editing an existing
-    // snippet's contents may not always bump the directory's own mtime,
-    // depending on the OS/filesystem. Users can still run `zedx sync`
-    // manually to pick up in-place edits immediately.
-    const watchPaths = [zedPaths.settings, zedPaths.keymap, zedPaths.tasks, zedPaths.snippetsDir];
+    // Snippets and local themes are watched as directories rather than
+    // individual files, since the set of filenames isn't fixed. Note this
+    // only reliably catches files being added/removed/renamed — editing an
+    // existing file's contents may not always bump the directory's own
+    // mtime, depending on the OS/filesystem. The periodic run picks those
+    // up, and users can still run `zedx sync` manually.
+    const watchPaths = [
+        zedPaths.settings,
+        zedPaths.keymap,
+        zedPaths.tasks,
+        zedPaths.debug,
+        zedPaths.agents,
+        zedPaths.snippetsDir,
+        zedPaths.themesDir,
+    ];
     // launchd/systemd path watchers only reliably register on paths that
-    // already exist, and a user with no snippets yet won't have this
-    // directory created by Zed until they add one.
+    // already exist, and a user with no snippets or local themes yet may not
+    // have these directories.
     await fs.ensureDir(zedPaths.snippetsDir);
+    await fs.ensureDir(zedPaths.themesDir);
 
     p.log.info(`Watching:`);
     for (const wp of watchPaths) {
@@ -286,7 +329,7 @@ export async function syncInstall(): Promise<void> {
     }
 
     p.outro(
-        `${color.green('✓')} zedx sync will now run automatically whenever your Zed config changes.\n\n` +
+        `${color.green('✓')} zedx sync will now run automatically whenever your Zed config changes, and every ${PULL_INTERVAL_MINUTES} minutes to pull changes from other machines.\n\n` +
             `  Run ${color.cyan('zedx sync uninstall')} to remove the daemon at any time.`,
     );
 }
