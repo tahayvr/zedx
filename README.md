@@ -109,7 +109,10 @@ zedx check
 zedx install
 ```
 
-Symlinks the extension directory into Zed's installed extensions folder and registers it in Zed's extension index. Reload extensions in Zed (or restart it) to pick up the change.
+Symlinks the extension directory into Zed's installed extensions folder; Zed indexes it from there on its own. Restart Zed if the extension does not show up.
+
+> [!NOTE]
+> `zedx install` only links the extension. Tree-sitter grammars and Rust code have to be compiled by Zed, so for language and language server extensions use `Extensions > Install Dev Extension` in Zed instead.
 
 ### Configuration
 

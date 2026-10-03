@@ -13,16 +13,6 @@ function tomlString(table: TomlTable, key: string): string | undefined {
     return typeof value === 'string' ? value : undefined;
 }
 
-function tomlNumber(table: TomlTable, key: string): number | undefined {
-    const value = table[key];
-    return typeof value === 'number' ? value : undefined;
-}
-
-function tomlAuthors(table: TomlTable): string[] {
-    const value = table['authors'];
-    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
-
 // Filesystem helpers
 function resolveZedExtensionsDir(): string {
     const home = os.homedir();
@@ -45,124 +35,23 @@ function resolveZedExtensionsDir(): string {
     throw new Error(`Unsupported platform: ${platform}`);
 }
 
-function listSubdirs(dir: string): string[] {
-    try {
-        return fs
-            .readdirSync(dir, { withFileTypes: true })
-            .filter(d => d.isDirectory())
-            .map(d => d.name);
-    } catch {
-        return [];
-    }
-}
+// Zed compiles grammars and Rust code itself when a dev extension is installed
+// from its UI. zedx only links the directory, so report what still needs a build.
+async function findUnbuiltParts(extensionDir: string, toml: TomlTable): Promise<string[]> {
+    const unbuilt: string[] = [];
 
-// Manifest builder
-interface ExtensionManifest {
-    id: string;
-    name: string;
-    version: string;
-    schema_version: number;
-    description: string;
-    repository: string;
-    authors: string[];
-    lib: { kind: string | null; version: string | null };
-    themes: string[];
-    icon_themes: string[];
-    languages: string[];
-    grammars: Record<string, unknown>;
-    language_servers: Record<string, unknown>;
-    context_servers: Record<string, unknown>;
-    agent_servers: Record<string, unknown>;
-    slash_commands: Record<string, unknown>;
-    snippets: null;
-    capabilities: unknown[];
-}
-
-function buildManifest(extensionDir: string, toml: TomlTable): ExtensionManifest {
-    const id = tomlString(toml, 'id') ?? 'unknown';
-    const name = tomlString(toml, 'name') ?? id;
-    const version = tomlString(toml, 'version') ?? '0.0.1';
-    const schemaVersion = tomlNumber(toml, 'schema_version') ?? 1;
-    const description = tomlString(toml, 'description') ?? '';
-    const repository = tomlString(toml, 'repository') ?? '';
-    const authors = tomlAuthors(toml);
-
-    // Detect themes
-    const themesDir = path.join(extensionDir, 'themes');
-    const themes: string[] = fs.pathExistsSync(themesDir)
-        ? fs
-              .readdirSync(themesDir)
-              .filter(f => f.endsWith('.json'))
-              .map(f => `themes/${f}`)
-        : [];
-
-    // Detect icon themes
-    const iconThemesDir = path.join(extensionDir, 'icon_themes');
-    const iconThemes: string[] = fs.pathExistsSync(iconThemesDir)
-        ? fs
-              .readdirSync(iconThemesDir)
-              .filter(f => f.endsWith('.json'))
-              .map(f => `icon_themes/${f}`)
-        : [];
-
-    // Detect languages
-    const langsDir = path.join(extensionDir, 'languages');
-    const languages: string[] = fs.pathExistsSync(langsDir)
-        ? listSubdirs(langsDir).map(d => `languages/${d}`)
-        : [];
-
-    // Detect grammars from the parsed [grammars.<id>] table
     const grammarsTable = (toml['grammars'] as TomlTable | undefined) ?? {};
-    const grammars: Record<string, unknown> = {};
-    for (const [grammarId, value] of Object.entries(grammarsTable)) {
-        const entry = (value as TomlTable | undefined) ?? {};
-        grammars[grammarId] = {
-            repository: tomlString(entry, 'repository') ?? '',
-            rev: tomlString(entry, 'rev') ?? '',
-            path: null,
-        };
+    for (const grammarId of Object.keys(grammarsTable)) {
+        const wasmPath = path.join(extensionDir, 'grammars', `${grammarId}.wasm`);
+        if (!(await fs.pathExists(wasmPath))) unbuilt.push(`grammar "${grammarId}"`);
     }
 
-    // Detect language_servers from the parsed [language_servers.<id>] table
-    const languageServersTable = (toml['language_servers'] as TomlTable | undefined) ?? {};
-    const languageServers: Record<string, unknown> = {};
-    for (const [lsId, value] of Object.entries(languageServersTable)) {
-        const entry = (value as TomlTable | undefined) ?? {};
-        const languagesValue = entry['languages'];
-        const langs = Array.isArray(languagesValue)
-            ? languagesValue.filter((v): v is string => typeof v === 'string')
-            : [];
-        languageServers[lsId] = {
-            language: langs[0] ?? '',
-            languages: langs.slice(1),
-            language_ids: {},
-            code_action_kinds: null,
-        };
+    const hasRust = await fs.pathExists(path.join(extensionDir, 'Cargo.toml'));
+    if (hasRust && !(await fs.pathExists(path.join(extensionDir, 'extension.wasm')))) {
+        unbuilt.push('Rust code');
     }
 
-    // Detect whether Rust lib is present
-    const hasLib = fs.pathExistsSync(path.join(extensionDir, 'Cargo.toml'));
-
-    return {
-        id,
-        name,
-        version,
-        schema_version: schemaVersion,
-        description,
-        repository,
-        authors,
-        lib: { kind: hasLib ? 'Rust' : null, version: null },
-        themes,
-        icon_themes: iconThemes,
-        languages,
-        grammars,
-        language_servers: languageServers,
-        context_servers: {},
-        agent_servers: {},
-        slash_commands: {},
-        snippets: null,
-        capabilities: [],
-    };
+    return unbuilt;
 }
 
 // Main install function
@@ -203,7 +92,6 @@ export async function installDevExtension(callerDir: string): Promise<void> {
     }
 
     const installedDir = path.join(extensionsDir, 'installed');
-    const indexPath = path.join(extensionsDir, 'index.json');
     const symlinkPath = path.join(installedDir, extensionId);
 
     await fs.ensureDir(installedDir);
@@ -245,26 +133,26 @@ export async function installDevExtension(callerDir: string): Promise<void> {
         );
     }
 
-    // --- Upsert index.json ---
-    let index: { extensions: Record<string, unknown> } = { extensions: {} };
-    if (await fs.pathExists(indexPath)) {
-        try {
-            index = await fs.readJson(indexPath);
-        } catch {
-            // malformed — start fresh
-        }
+    // Zed builds the index entry from extension.toml itself, and rebuilds
+    // index.json whenever installed/ is newer than it. Bump the mtime so that
+    // also happens when the symlink was already in place.
+    const now = new Date();
+    await fs.utimes(installedDir, now, now);
+
+    const unbuilt = await findUnbuiltParts(callerDir, toml);
+    if (unbuilt.length > 0) {
+        p.log.warn(
+            `${color.yellow('Not compiled yet:')} ${unbuilt.join(', ')}\n` +
+                `  zedx only links the extension. Use ${color.white('Extensions > Install Dev Extension')} in Zed to compile it.`,
+        );
     }
 
-    const manifest = buildManifest(callerDir, toml);
-    index.extensions[extensionId] = { manifest, dev: true };
-
-    await fs.writeJson(indexPath, index, { spaces: 2 });
-    p.log.success(`Updated ${color.cyan('index.json')}`);
+    const name = tomlString(toml, 'name') ?? extensionId;
+    const version = tomlString(toml, 'version') ?? '0.0.1';
 
     p.outro(
-        `${color.green('✓')} ${color.bold(`${manifest.name} v${manifest.version}`)} installed as a dev extension.\n\n` +
-            `  ${color.dim('Reload Zed to pick up the changes:')}\n` +
-            `  ${color.white('Extensions')} ${color.dim('→')} ${color.white('Reload Extensions')}  ${color.dim('(or restart Zed)')}\n\n` +
+        `${color.green('✓')} ${color.bold(`${name} v${version}`)} linked as a dev extension.\n\n` +
+            `  ${color.dim('Zed indexes the extension itself. Restart Zed if it does not show up.')}\n\n` +
             `  ${color.dim('Run')} ${color.cyan('zedx check')} ${color.dim('to validate your extension.')}`,
     );
 }
