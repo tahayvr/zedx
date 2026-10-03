@@ -3,13 +3,67 @@ import color from 'picocolors';
 
 import type { ExtensionOptions, ExtensionType, License, LanguageOptions } from './types/index.js';
 
+const EXTENSION_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// Mirrors the ID rules Zed's extension registry enforces on submission.
+function validateExtensionId(id: string): string | undefined {
+    if (!EXTENSION_ID_PATTERN.test(id)) {
+        return 'ID must be kebab-case (lowercase letters, numbers, and hyphens)';
+    }
+    if (id.split('-').includes('zed')) return 'ID must not include "zed"';
+    if (id.includes('extension')) return 'ID must not include "extension"';
+}
+
+async function promptExtensionTypes(): Promise<ExtensionType[]> {
+    const selected = await p.multiselect({
+        message: 'What do you want to include in your extension?',
+        options: [
+            { value: 'theme', label: 'Theme', hint: 'Color scheme for the editor' },
+            {
+                value: 'language',
+                label: 'Language',
+                hint: 'Syntax highlighting, indentation, etc.',
+            },
+            {
+                value: 'icon-theme',
+                label: 'Icon theme',
+                hint: 'File/folder icons in the project panel',
+            },
+        ],
+        required: true,
+    });
+    if (p.isCancel(selected)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+    const types = selected as ExtensionType[];
+
+    // Zed's registry only accepts theme and icon theme extensions that provide
+    // nothing else, so a mix works locally but can't be published as-is.
+    const mixesThemeType =
+        types.length > 1 && types.some(type => type === 'theme' || type === 'icon-theme');
+    if (!mixesThemeType) return types;
+
+    const keep = await p.confirm({
+        message:
+            "Zed's extension registry rejects theme and icon theme extensions that include anything else. Keep this combination anyway?",
+        initialValue: false,
+    });
+    if (p.isCancel(keep)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    return keep ? types : promptExtensionTypes();
+}
+
 export async function promptUser(): Promise<ExtensionOptions> {
     console.log('');
     p.intro(
         `${color.bgBlue(color.bold(' zedx create '))} ${color.blue('Boilerplate generator for Zed Editor extensions.')}`,
     );
 
-    const nameDefault = 'my-zed-extension';
+    const nameDefault = 'my-project';
     const name = await p.text({
         message: 'Project name:',
         placeholder: nameDefault,
@@ -20,14 +74,15 @@ export async function promptUser(): Promise<ExtensionOptions> {
     }
     const nameValue = name || nameDefault;
 
-    const idDefault = nameValue.toLowerCase().replace(/\s+/g, '-');
+    const idDefault = nameValue
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
     const id = await p.text({
         message: 'Extension ID:',
         placeholder: idDefault,
-        validate: (value: string | undefined) => {
-            if (value && value.includes(' ')) return 'ID cannot contain spaces';
-            if (value && value !== value.toLowerCase()) return 'ID must be lowercase';
-        },
+        // An empty answer falls back to the default, so validate that instead.
+        validate: (value: string | undefined) => validateExtensionId(value || idDefault),
     });
     if (p.isCancel(id)) {
         p.cancel('Cancelled.');
@@ -87,27 +142,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
         process.exit(0);
     }
 
-    const extensionTypes = await p.multiselect({
-        message: 'What do you want to include in your extension?',
-        options: [
-            { value: 'theme', label: 'Theme', hint: 'Color scheme for the editor' },
-            {
-                value: 'language',
-                label: 'Language',
-                hint: 'Syntax highlighting, indentation, etc.',
-            },
-            {
-                value: 'icon-theme',
-                label: 'Icon theme',
-                hint: 'File/folder icons in the project panel',
-            },
-        ],
-        required: true,
-    });
-    if (p.isCancel(extensionTypes)) {
-        p.cancel('Cancelled.');
-        process.exit(0);
-    }
+    const extensionTypes = await promptExtensionTypes();
 
     const options: ExtensionOptions = {
         name: nameValue,
@@ -116,7 +151,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
         author: String(author),
         repository: repositoryValue,
         license: license as License,
-        types: extensionTypes as ExtensionType[],
+        types: extensionTypes,
     };
 
     return options;

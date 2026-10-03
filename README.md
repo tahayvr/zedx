@@ -93,7 +93,7 @@ zedx snippet add lsp
 2. **Icon themes** - File/folder icons in the project panel
 3. **Languages** - Syntax highlighting, indentation, and optional LSP support
 
-You can choose any combination of these when creating an extension.
+You can pick more than one when creating an extension, but Zed's extension registry only accepts theme and icon theme extensions that provide nothing else, so `zedx create` asks for confirmation before mixing them with other types.
 
 ### Validation
 
