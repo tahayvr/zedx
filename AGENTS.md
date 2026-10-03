@@ -97,13 +97,16 @@ src/
 ├── generator.ts   # `zedx create` - file generation from EJS templates
 ├── add.ts         # `zedx add` - theme, icon theme, language
 ├── snippet.ts     # `zedx snippet add lsp` - language server wiring
-├── check.ts       # `zedx check` - extension validation
+├── check.ts       # `zedx check` - extension validation and publish gate
+├── publish.ts     # `zedx publish` - registry submission steps, release workflow
+├── registry-rules.ts # Zed extension registry rules (ID, version, license)
 ├── install.ts     # `zedx install` - install as a Zed dev extension
 ├── sync.ts        # `zedx sync` - init, status, select, and the sync run
+├── sync-merge.ts  # Pure helpers for sync: JSON merge, ignored keys, line diff
 ├── daemon.ts      # `zedx sync install/uninstall` - launchd, systemd, Task Scheduler
-├── config.ts      # `zedx config` - repo, conflict strategy, default files
+├── config.ts      # `zedx config` - repo, conflict strategy, default files, ignored keys
 ├── zed-paths.ts   # Per-platform Zed config paths
-├── *.test.ts      # Vitest unit tests (sync, zed-paths)
+├── *.test.ts      # Vitest unit tests (sync, sync-merge, registry-rules, zed-paths)
 ├── types/
 │   └── index.ts   # TypeScript interfaces/types
 └── templates/     # EJS templates (copied to dist on build)

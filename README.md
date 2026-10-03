@@ -34,7 +34,7 @@ zedx sync init
 Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
-> `settings.json`, `keymap.json`, `tasks.json`, and `snippets/*.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
+> `settings.json`, `keymap.json`, `tasks.json`, `debug.json`, the user-global `AGENTS.md`, `snippets/*.json`, and local themes in `themes/*.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.
 
 **2. Run a sync**
 
@@ -44,6 +44,15 @@ zedx sync --local    # Always keep local on conflict (no prompt)
 zedx sync --remote   # Always use remote on conflict (no prompt)
 zedx sync select     # Choose which files to sync for this run only
 ```
+
+How a sync decides what to do:
+
+- **Changed on one side**: the newer version is pushed or pulled.
+- **Deleted on one side**: once a file has been synced, deleting it on one machine removes it from the repo and from your other machines on their next sync. A new or reset machine (no Zed config files at all) only pulls; it never deletes.
+- **Changed on both sides**: `settings.json` is merged key by key, so changes to different keys are combined and only keys both sides changed need a decision. For other files zedx shows a diff and asks which version to keep.
+- **Backups**: before a sync overwrites or deletes a local file, it copies it to `~/.config/zedx/backups/`.
+
+If the repo can't be reached (offline, bad credentials), the sync stops with git's error and changes nothing.
 
 **3. Check sync state**
 
@@ -60,13 +69,15 @@ zedx sync uninstall  # Disable and remove the daemon
 
 Installs a background job that triggers `zedx sync` automatically. Supported platforms:
 
-| Platform | Mechanism                                              | Trigger                | Logs                                                           |
-| -------- | ------------------------------------------------------ | ---------------------- | -------------------------------------------------------------- |
-| macOS    | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | instantly on file save | `~/Library/Logs/zedx/sync.log`                                 |
-| Linux    | systemd user units (`~/.config/systemd/user/`)         | instantly on file save | `journalctl --user -u zedx-sync.service`                       |
-| Windows  | Task Scheduler (`ZedxSync` task)                       | polls every 5 minutes  | Task Scheduler → Task Scheduler Library → `ZedxSync` → History |
+| Platform | Mechanism                                              | Trigger                             | Logs                                                           |
+| -------- | ------------------------------------------------------ | ----------------------------------- | -------------------------------------------------------------- |
+| macOS    | launchd (`~/Library/LaunchAgents/dev.zedx.sync.plist`) | on file save, plus every 15 minutes | `~/Library/Logs/zedx/sync.log`                                 |
+| Linux    | systemd user units (`~/.config/systemd/user/`)         | on file save, plus every 15 minutes | `journalctl --user -u zedx-sync.service`                       |
+| Windows  | Task Scheduler (`ZedxSync` task)                       | polls every 5 minutes               | Task Scheduler → Task Scheduler Library → `ZedxSync` → History |
 
-Windows has no lightweight per-file watch hook for Task Scheduler (unlike launchd's `WatchPaths` or systemd's `PathChanged`), so it polls on an interval instead of syncing instantly on save.
+The file-save trigger pushes your local changes right away; the 15-minute run is what pulls changes made on your other machines. Windows has no lightweight per-file watch hook for Task Scheduler (unlike launchd's `WatchPaths` or systemd's `PathChanged`), so it polls on an interval instead of syncing instantly on save.
+
+If you installed the daemon with an earlier version, run `zedx sync install` again to pick up the periodic run and the newly tracked files.
 
 The daemon enforces a 30-second throttle on macOS to avoid rapid re-triggers. Any unattended run (no TTY attached — daemon, scheduled task, CI, etc.) automatically resolves conflicts by keeping local and logging a warning, instead of prompting.
 
@@ -102,6 +113,8 @@ You can pick more than one when creating an extension, but Zed's extension regis
 zedx check
 ```
 
+Besides leftover scaffold placeholders, `zedx check` applies the rules Zed's extension registry enforces: a kebab-case ID without `zed` or `extension`, a `major.minor.patch` version, an accepted license file, themes and icon themes shipping nothing else, grammars pinned to a commit SHA, and a `default` icon in icon themes. It exits with a non-zero status when it finds issues, so it can gate a CI job.
+
 ### Dev install
 
 ```bash
@@ -114,6 +127,20 @@ Symlinks the extension directory into Zed's installed extensions folder; Zed ind
 > [!NOTE]
 > `zedx install` only links the extension. Tree-sitter grammars and Rust code have to be compiled by Zed, so for language and language server extensions use `Extensions > Install Dev Extension` in Zed instead.
 
+### Publishing
+
+```bash
+# Check the extension and print the steps for the registry pull request
+zedx publish
+
+# Add a GitHub Actions workflow that opens update pull requests on release tags
+zedx publish workflow
+```
+
+`zedx publish` runs `zedx check`, verifies the git state the registry needs (clean, on a branch, pushed, HTTPS repository URL), and looks the extension up in [zed-industries/extensions](https://github.com/zed-industries/extensions) to tell a first submission from an update. It then prints the exact submodule command and `extensions.toml` entry to use. It does not open the pull request for you.
+
+`zedx publish workflow` writes `.github/workflows/release.yml` using the community [zed-extension-action](https://github.com/huacnlee/zed-extension-action), which opens the update pull request whenever you push a `v*` tag. It needs a fork of the registry and a `COMMITTER_TOKEN` secret; the first submission is still manual.
+
 ### Configuration
 
 ```bash
@@ -124,9 +151,12 @@ zedx config conflict --ask        # Always prompt on conflict
 zedx config conflict --local      # Local always wins, no prompt
 zedx config conflict --remote     # Remote always wins, no prompt
 zedx config files                 # Choose which files zedx sync touches by default
+zedx config ignore                # Keep some settings.json keys per-machine
 ```
 
 `zedx sync select` still exists for one-off overrides — `zedx config files` sets the persistent default so every plain `zedx sync` only touches the files you chose.
+
+`zedx config ignore` takes a comma-separated list of `settings.json` keys, with dots for nested ones (`ui_font_size, terminal.font_size`). Those keys are never pushed and never overwritten by a pull, so each machine keeps its own value. While any key is ignored, an edit that only changes comments in `settings.json` is not synced until a value changes too.
 
 ### Versioning
 
