@@ -32,6 +32,7 @@ See [Zed Documentation](https://zed.dev/docs/extensions/languages) for details.
 ## Publishing
 
 1. Run `zedx version patch|minor|major` to bump the version, then commit and push.
-2. Open a pull request against [zed-industries/extensions](https://github.com/zed-industries/extensions) that adds this repository as a submodule and adds an entry to `extensions.toml`. For an update, bump the submodule commit and the `version` in `extensions.toml` instead.
+2. Run `zedx publish` to check the extension and print the exact steps for the next one.
+3. Open a pull request against [zed-industries/extensions](https://github.com/zed-industries/extensions) that adds this repository as a submodule and adds an entry to `extensions.toml`. For an update, bump the submodule commit and the `version` in `extensions.toml` instead.
 
 See the [Publishing Guide](https://zed.dev/docs/extensions/publishing/publishing-guide) for the full steps and requirements.

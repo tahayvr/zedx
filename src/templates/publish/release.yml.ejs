@@ -1,0 +1,19 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Open a Zed extension registry update PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: huacnlee/zed-extension-action@v1
+        with:
+          extension-name: <%= id %>
+          push-to: <%= pushTo %>
+        env:
+          # Personal access token with the "repo" and "workflow" scopes
+          COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}

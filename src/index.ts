@@ -20,6 +20,7 @@ import {
     promptIconThemeDetails,
     promptLanguageDetails,
 } from './prompts.js';
+import { publishWorkflow, runPublish } from './publish.js';
 import { addLsp } from './snippet.js';
 import { syncInit, runSync, syncStatus, syncSelect } from './sync.js';
 import type { ConflictStrategy } from './types/index.js';
@@ -111,6 +112,8 @@ function printWelcome(): void {
         ['zedx snippet add lsp', 'Wire up a language server into the extension'],
         ['zedx check', 'Validate your extension config'],
         ['zedx install', 'Install as a Zed dev extension'],
+        ['zedx publish', 'Check and print the registry submission steps'],
+        ['zedx publish workflow', 'Add a release workflow for update PRs'],
         ['zedx version <major|minor|patch>', 'Bump extension version'],
     ];
 
@@ -203,6 +206,20 @@ async function main() {
         .description('Install the current extension as a Zed dev extension')
         .action(async () => {
             await installDevExtension(getCallerDir());
+        });
+
+    const publishCmd = program
+        .command('publish')
+        .description('Check the extension and print the steps to submit it to the Zed registry')
+        .action(async () => {
+            await runPublish(getCallerDir());
+        });
+
+    publishCmd
+        .command('workflow')
+        .description('Add a GitHub Actions workflow that opens registry update PRs on release tags')
+        .action(async () => {
+            await publishWorkflow(getCallerDir());
         });
 
     const addCmd = program
