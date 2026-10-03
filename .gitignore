@@ -2,29 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.tgz
-*
 
-# Include
-!src/
-!src/**
-
-!assets
-!assets/**
-
-!LICENSE
-
-!package.json
-!pnpm-lock.yaml
-!pnpm-workspace.yaml
-!README.md
-!tsconfig.json
-!.oxfmtrc.json
-!.gitignore
-
-# DX
-!justfile
-
-# releases
-!.github
-!.github/**
-!cliff.toml
+# Local only
+dev-docs/
+zedx.rb
