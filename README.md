@@ -42,6 +42,7 @@ Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`)
 zedx sync            # Sync local ↔ remote, prompts when both sides changed
 zedx sync --local    # Always keep local on conflict (no prompt)
 zedx sync --remote   # Always use remote on conflict (no prompt)
+zedx sync select     # Choose which files to sync for this run only
 ```
 
 **3. Check sync state**
@@ -79,7 +80,12 @@ zedx create
 zedx add theme "Midnight Blue"
 zedx add icon-theme "Midnight Blue Icons"
 zedx add language rust
+
+# Wire up a language server (Rust + WASM) into an existing extension
+zedx snippet add lsp
 ```
+
+`zedx snippet add lsp` prompts for the server name, language, and binary command, then adds a `[language_servers.*]` block to `extension.toml` and creates `Cargo.toml` and `src/lib.rs` if they don't exist yet.
 
 ### Supported extension types:
 
@@ -95,6 +101,15 @@ You can choose any combination of these when creating an extension.
 # Validate extension config and show what is missing or incomplete
 zedx check
 ```
+
+### Dev install
+
+```bash
+# Install the current extension as a Zed dev extension
+zedx install
+```
+
+Symlinks the extension directory into Zed's installed extensions folder and registers it in Zed's extension index. Reload extensions in Zed (or restart it) to pick up the change.
 
 ### Configuration
 
