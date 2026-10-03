@@ -1,18 +1,8 @@
 import * as p from '@clack/prompts';
 import color from 'picocolors';
 
+import { validateExtensionId } from './registry-rules.js';
 import type { ExtensionOptions, ExtensionType, License, LanguageOptions } from './types/index.js';
-
-const EXTENSION_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-// Mirrors the ID rules Zed's extension registry enforces on submission.
-function validateExtensionId(id: string): string | undefined {
-    if (!EXTENSION_ID_PATTERN.test(id)) {
-        return 'ID must be kebab-case (lowercase letters, numbers, and hyphens)';
-    }
-    if (id.split('-').includes('zed')) return 'ID must not include "zed"';
-    if (id.includes('extension')) return 'ID must not include "extension"';
-}
 
 async function promptExtensionTypes(): Promise<ExtensionType[]> {
     const selected = await p.multiselect({
