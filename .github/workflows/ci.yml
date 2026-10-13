@@ -4,7 +4,15 @@ on:
     push:
         branches:
             - main
+        paths-ignore: &non-code
+            - '**.md'
+            - 'assets/**'
+            - 'LICENSE'
+            - 'cliff.toml'
+            - 'justfile'
+            - '.github/workflows/release.yml'
     pull_request:
+        paths-ignore: *non-code
 
 jobs:
     check:
