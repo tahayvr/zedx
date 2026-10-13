@@ -158,12 +158,15 @@ zedx config conflict --local      # Local always wins, no prompt
 zedx config conflict --remote     # Remote always wins, no prompt
 zedx config files                 # Choose which files zedx sync touches by default
 zedx config ignore                # Keep some settings.json keys per-machine
+zedx config keymap                # Share keymap.json or keep one per platform
 zedx config open                  # Open ~/.config/zedx/config.json in Zed
 ```
 
 `zedx sync select` still exists for one-off overrides — `zedx config files` sets the persistent default so every plain `zedx sync` only touches the files you chose.
 
 `zedx config ignore` takes a comma-separated list of `settings.json` keys, with dots for nested ones (`ui_font_size, terminal.font_size`). Those keys are never pushed and never overwritten by a pull, so each machine keeps its own value. While any key is ignored, an edit that only changes comments in `settings.json` is not synced until a value changes too.
+
+`zedx config keymap --per-platform` keeps the keymap in the repo as `keymap.macos.json`, `keymap.linux.json`, or `keymap.windows.json`, so key bindings only sync between machines on the same OS. `--shared` goes back to one `keymap.json` for every machine. The setting is per machine, so set it on each machine you sync.
 
 ### Versioning
 

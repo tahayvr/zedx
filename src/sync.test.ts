@@ -10,9 +10,32 @@ import {
     decideFileSync,
     detectIndent,
     filterSyncFiles,
+    keymapRepoFile,
     reconcileAutoInstallExtensions,
     resolveConflictStrategy,
 } from './sync.js';
+
+describe('keymapRepoFile', () => {
+    it('uses one shared keymap.json by default', () => {
+        expect(keymapRepoFile(false, 'darwin')).toEqual({
+            name: 'keymap.json',
+            label: 'Key bindings',
+        });
+    });
+
+    it('names the file after the platform when keymaps are per platform', () => {
+        expect(keymapRepoFile(true, 'darwin').name).toBe('keymap.macos.json');
+        expect(keymapRepoFile(true, 'linux').name).toBe('keymap.linux.json');
+        expect(keymapRepoFile(true, 'win32')).toEqual({
+            name: 'keymap.windows.json',
+            label: 'Key bindings (Windows)',
+        });
+    });
+
+    it('falls back to the shared file on platforms Zed does not run on', () => {
+        expect(keymapRepoFile(true, 'freebsd').name).toBe('keymap.json');
+    });
+});
 
 describe('detectIndent', () => {
     it('detects 4-space indent', () => {

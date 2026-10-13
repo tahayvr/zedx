@@ -150,9 +150,30 @@ export async function buildThemeFileEntries(
     );
 }
 
+const PLATFORM_NAMES: Partial<Record<NodeJS.Platform, { id: string; label: string }>> = {
+    darwin: { id: 'macos', label: 'macOS' },
+    linux: { id: 'linux', label: 'Linux' },
+    win32: { id: 'windows', label: 'Windows' },
+};
+
+// Where the keymap lives in the sync repo: one shared keymap.json, or one
+// file per OS when keymaps are kept per platform.
+export function keymapRepoFile(
+    perPlatform: boolean,
+    platform: NodeJS.Platform = process.platform,
+): { name: string; label: string } {
+    const names = PLATFORM_NAMES[platform];
+    if (!perPlatform || !names) return { name: 'keymap.json', label: 'Key bindings' };
+    return { name: `keymap.${names.id}.json`, label: `Key bindings (${names.label})` };
+}
+
 // Every file a sync could touch, mapped between the Zed config dir and a
 // checkout of the sync repo.
-async function collectSyncFiles(zedPaths: ZedPaths, repoDir: string): Promise<SyncFileEntry[]> {
+async function collectSyncFiles(
+    zedPaths: ZedPaths,
+    repoDir: string,
+    config: SyncConfig,
+): Promise<SyncFileEntry[]> {
     const fixed = (key: string, name: string, localPath: string, label: string) => ({
         key,
         repoPath: path.join(repoDir, name),
@@ -172,10 +193,11 @@ async function collectSyncFiles(zedPaths: ZedPaths, repoDir: string): Promise<Sy
             path.join(ZEDX_BASE_DIR, 'themes'),
         ),
     ]);
+    const keymap = keymapRepoFile(config.keymapPerPlatform ?? false);
 
     return [
         fixed('settings', 'settings.json', zedPaths.settings, 'Settings'),
-        fixed('keymap', 'keymap.json', zedPaths.keymap, 'Key bindings'),
+        fixed('keymap', keymap.name, zedPaths.keymap, keymap.label),
         fixed('tasks', 'tasks.json', zedPaths.tasks, 'Tasks'),
         fixed('debug', 'debug.json', zedPaths.debug, 'Debug scenarios'),
         fixed('agents', 'AGENTS.md', zedPaths.agents, 'Agent rules'),
@@ -593,7 +615,7 @@ export async function syncStatus(): Promise<void> {
             remoteExists ? 'Remote fetched.' : color.yellow('Remote branch does not exist yet.'),
         );
 
-        const allFiles = await collectSyncFiles(zedPaths, tmp);
+        const allFiles = await collectSyncFiles(zedPaths, tmp, config);
 
         // Only report on the files an actual `zedx sync` would touch.
         const files = filterSyncFiles(allFiles, config.files);
@@ -887,7 +909,7 @@ export async function runSync(
         }
 
         // 2. Determine what changed for each file
-        const allFiles = await collectSyncFiles(zedPaths, tmp);
+        const allFiles = await collectSyncFiles(zedPaths, tmp, config);
 
         // An explicit --select-style call wins; otherwise fall back to the
         // persisted default from `zedx config files` (undefined means sync

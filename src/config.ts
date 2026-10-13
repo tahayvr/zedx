@@ -8,7 +8,7 @@ import color from 'picocolors';
 import simpleGit from 'simple-git';
 
 import { parseJsonc, unsetKeys } from './sync-merge.js';
-import { SYNC_FILE_GROUPS } from './sync.js';
+import { SYNC_FILE_GROUPS, keymapRepoFile } from './sync.js';
 import type { SyncConfig, ConflictStrategy } from './types/index.js';
 import { resolveZedPaths } from './zed-paths.js';
 
@@ -275,6 +275,69 @@ export async function configIgnore(): Promise<void> {
     );
 }
 
+export type KeymapMode = 'shared' | 'per-platform';
+
+// zedx config keymap
+export async function configKeymap(direct?: KeymapMode): Promise<void> {
+    console.log('');
+    p.intro(
+        `${color.bgBlue(color.bold(' zedx config keymap '))} ${color.blue('Share or split keymaps across platforms…')}`,
+    );
+
+    const existing = await readConfig();
+
+    if (!existing) {
+        p.log.error(
+            color.red('No sync config found. Run ') +
+                color.cyan('zedx sync init') +
+                color.red(' first.'),
+        );
+        process.exit(1);
+    }
+
+    let mode: KeymapMode;
+
+    if (direct) {
+        mode = direct;
+    } else {
+        const selected = await p.select<KeymapMode>({
+            message: 'How should keymap.json sync between machines?',
+            options: [
+                {
+                    value: 'shared',
+                    label: 'One keymap for every machine',
+                    hint: 'keymap.json',
+                },
+                {
+                    value: 'per-platform',
+                    label: 'One keymap per platform',
+                    hint: `only syncs with machines on the same OS (${keymapRepoFile(true).name} here)`,
+                },
+            ],
+            initialValue: existing.keymapPerPlatform ? 'per-platform' : 'shared',
+        });
+
+        if (p.isCancel(selected)) {
+            p.cancel('Cancelled.');
+            process.exit(0);
+        }
+
+        mode = selected;
+    }
+
+    const { keymapPerPlatform: _previous, ...rest } = existing;
+    const updated: PersistedConfig =
+        mode === 'per-platform' ? { ...rest, keymapPerPlatform: true } : rest;
+
+    await writeConfig(updated);
+
+    const repoFile = keymapRepoFile(mode === 'per-platform').name;
+    p.outro(
+        `${color.green('✓')} This machine now syncs its keymap as ${color.cyan(repoFile)} in the repo.\n\n` +
+            `  ${color.dim('Set the same mode on your other machines so they sync the same file.')}`,
+    );
+}
+
 // Launch Zed on a file, trying the `zed` CLI first and then the
 // platform-specific fallbacks. Returns false when none could be started.
 function openInZed(filePath: string): boolean {
@@ -312,7 +375,7 @@ export async function configOpen(): Promise<void> {
     p.log.success(`Opened ${color.dim(ZEDX_CONFIG_PATH)} in Zed.`);
 }
 
-type ConfigOption = 'repo' | 'conflict' | 'files' | 'ignore' | 'open';
+type ConfigOption = 'repo' | 'conflict' | 'files' | 'ignore' | 'keymap' | 'open';
 
 // zedx config (interactive menu)
 export async function runConfig(direct?: ConfigOption): Promise<void> {
@@ -333,6 +396,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
 
     if (direct === 'ignore') {
         await configIgnore();
+        return;
+    }
+
+    if (direct === 'keymap') {
+        await configKeymap();
         return;
     }
 
@@ -368,6 +436,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
                 hint: 'settings.json keys that are never synced',
             },
             {
+                value: 'keymap',
+                label: 'Keymap per platform',
+                hint: 'Share keymap.json everywhere or keep one per OS',
+            },
+            {
                 value: 'open',
                 label: 'Open config file',
                 hint: 'Edit ~/.config/zedx/config.json in Zed',
@@ -388,6 +461,8 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
         await configFiles();
     } else if (option === 'ignore') {
         await configIgnore();
+    } else if (option === 'keymap') {
+        await configKeymap();
     } else if (option === 'open') {
         await configOpen();
     }

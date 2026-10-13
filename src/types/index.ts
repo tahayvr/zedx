@@ -23,6 +23,9 @@ export interface SyncConfig {
     // settings.json keys (dot-separated paths) that stay per-machine: never
     // pushed, and never overwritten by a pull.
     ignoredSettings?: string[];
+    // Keep keymap.json per OS in the repo (keymap.macos.json, …) so it only
+    // syncs between machines on the same platform.
+    keymapPerPlatform?: boolean;
 }
 
 export type License =

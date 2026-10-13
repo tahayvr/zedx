@@ -16,6 +16,7 @@ import {
     configConflict,
     configFiles,
     configIgnore,
+    configKeymap,
     configOpen,
 } from './config.js';
 import { syncInstall, syncUninstall } from './daemon.js';
@@ -109,6 +110,7 @@ function printWelcome(): void {
         ['zedx config conflict', 'Set default conflict resolution strategy'],
         ['zedx config files', 'Set default files zedx sync touches'],
         ['zedx config ignore', 'Keep settings.json keys per-machine'],
+        ['zedx config keymap', 'Share keymap.json or keep one per platform'],
         ['zedx config open', 'Open the zedx config file in Zed'],
     ];
 
@@ -371,6 +373,21 @@ async function main() {
         .description('Keep some settings.json keys per-machine, out of zedx sync')
         .action(async () => {
             await configIgnore();
+        });
+
+    configCmd
+        .command('keymap')
+        .description('Share keymap.json across machines or keep one per platform')
+        .option('--shared', 'One keymap for every machine')
+        .option('--per-platform', 'One keymap per OS, synced only between machines on that OS')
+        .action(async (opts: { shared?: boolean; perPlatform?: boolean }) => {
+            if (opts.shared && opts.perPlatform) {
+                p.log.error(color.red('Only one of --shared, --per-platform can be set.'));
+                process.exit(1);
+            }
+            await configKeymap(
+                opts.shared ? 'shared' : opts.perPlatform ? 'per-platform' : undefined,
+            );
         });
 
     configCmd
