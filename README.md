@@ -37,7 +37,7 @@ Sync your Zed config across machines using a private Git repo as the source of t
 zedx sync init
 ```
 
-Prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
+If the [GitHub CLI](https://cli.github.com) (`gh`) is installed and logged in, zedx offers to create a new private repo for you (named `zed-config` by default). Otherwise, or if you choose an existing repo, it prompts for a Git repo URL (SSH or HTTPS) and a branch name (defaults to `main`). The repo is saved to `~/.config/zedx/config.json`. No files are synced yet.
 
 > [!NOTE]
 > `settings.json`, `keymap.json`, `tasks.json`, `debug.json`, the user-global `AGENTS.md`, `snippets/*.json`, and local themes in `themes/*.json` are tracked. Extension sync is handled via the `auto_install_extensions` field within `settings.json`, which Zed uses to automatically download and install extensions.

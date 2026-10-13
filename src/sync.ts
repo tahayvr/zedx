@@ -7,6 +7,7 @@ import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
 import color from 'picocolors';
 import simpleGit, { type SimpleGit } from 'simple-git';
 
+import { createPrivateRepo, ghStatus } from './github.js';
 import {
     applyMergeEdits,
     detectIndent,
@@ -746,6 +747,38 @@ export async function syncStatus(): Promise<void> {
 }
 
 // zedx sync init
+// Ask for a repo name and create it as a private repo with gh. Returns the
+// clone URL; exits when gh fails.
+async function createRepoWithGh(): Promise<string> {
+    const name = await p.text({
+        message: 'Repo name',
+        placeholder: 'zed-config',
+        defaultValue: 'zed-config',
+        validate: v => {
+            if (v && !/^[\w.-]+$/.test(v)) return 'Use letters, numbers, ".", "-", or "_"';
+        },
+    });
+
+    if (p.isCancel(name)) {
+        p.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    const spinner = p.spinner();
+    spinner.start(`Creating private repo ${name}...`);
+    const result = createPrivateRepo(name);
+    if ('error' in result) {
+        spinner.stop(color.red('Could not create the repo.'));
+        p.log.error(result.error);
+        p.log.info(
+            `Run ${color.cyan('zedx sync init')} again and choose an existing repo instead.`,
+        );
+        process.exit(1);
+    }
+    spinner.stop(`Created ${color.cyan(result.url)}`);
+    return result.url;
+}
+
 export async function syncInit(): Promise<void> {
     console.log('');
     p.intro(
@@ -763,51 +796,98 @@ export async function syncInit(): Promise<void> {
         process.exit(0);
     }
 
-    const repo = await p.text({
-        message: 'Git repo URL (SSH or HTTPS)',
-        placeholder: 'https://github.com/you/zed-config.git',
-        validate: v => {
-            if (!v?.trim()) return 'Repo URL is required';
-            if (!v.startsWith('https://') && !v.startsWith('git@')) {
-                return 'Must be a valid HTTPS or SSH git URL';
-            }
-        },
-    });
+    let repoUrl: string | undefined;
+    let branchName = 'main';
 
-    if (p.isCancel(repo)) {
-        p.cancel('Cancelled.');
-        process.exit(0);
+    const gh = ghStatus();
+
+    if (gh === 'ready') {
+        const where = await p.select({
+            message: 'Where should your Zed config live?',
+            options: [
+                {
+                    value: 'create',
+                    label: 'Create a new private GitHub repo',
+                    hint: 'uses the GitHub CLI',
+                },
+                { value: 'existing', label: 'Use an existing repo' },
+            ],
+        });
+
+        if (p.isCancel(where)) {
+            p.cancel('Cancelled.');
+            process.exit(0);
+        }
+
+        if (where === 'create') {
+            repoUrl = await createRepoWithGh();
+        }
+    } else if (gh === 'logged-out') {
+        p.log.info(
+            color.dim(
+                `Tip: run ${color.cyan('gh auth login')} first and zedx can create a private repo for you.`,
+            ),
+        );
+    } else {
+        p.log.info(
+            color.dim(
+                'Tip: with the GitHub CLI (gh) installed and logged in, zedx can create a private repo for you.',
+            ),
+        );
     }
 
-    const branch = await p.text({
-        message: 'Branch name',
-        placeholder: 'main',
-        defaultValue: 'main',
-    });
+    if (!repoUrl) {
+        const repo = await p.text({
+            message: 'Git repo URL (SSH or HTTPS)',
+            placeholder: 'https://github.com/you/zed-config.git',
+            validate: v => {
+                if (!v?.trim()) return 'Repo URL is required';
+                if (!v.startsWith('https://') && !v.startsWith('git@')) {
+                    return 'Must be a valid HTTPS or SSH git URL';
+                }
+            },
+        });
 
-    if (p.isCancel(branch)) {
-        p.cancel('Cancelled.');
-        process.exit(0);
-    }
+        if (p.isCancel(repo)) {
+            p.cancel('Cancelled.');
+            process.exit(0);
+        }
 
-    const spinner = p.spinner();
-    spinner.start('Verifying repo is reachable...');
+        const branch = await p.text({
+            message: 'Branch name',
+            placeholder: 'main',
+            defaultValue: 'main',
+        });
 
-    try {
-        const git = simpleGit();
-        await Promise.race([
-            git.listRemote(['--heads', repo as string]),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-        spinner.stop('Repo verified.');
-    } catch {
-        spinner.stop(color.red('Could not reach repo. Check the URL and your credentials.'));
-        process.exit(1);
+        if (p.isCancel(branch)) {
+            p.cancel('Cancelled.');
+            process.exit(0);
+        }
+
+        const spinner = p.spinner();
+        spinner.start('Verifying repo is reachable...');
+
+        try {
+            const git = simpleGit();
+            await Promise.race([
+                git.listRemote(['--heads', repo as string]),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('timeout')), 8000),
+                ),
+            ]);
+            spinner.stop('Repo verified.');
+        } catch {
+            spinner.stop(color.red('Could not reach repo. Check the URL and your credentials.'));
+            process.exit(1);
+        }
+
+        repoUrl = (repo as string).trim();
+        branchName = ((branch as string) || 'main').trim();
     }
 
     const config: PersistedConfig = {
-        syncRepo: (repo as string).trim(),
-        branch: ((branch as string) || 'main').trim(),
+        syncRepo: repoUrl,
+        branch: branchName,
         conflictStrategy: 'ask',
     };
 

@@ -107,7 +107,8 @@ src/
 ├── daemon.ts      # `zedx sync install/uninstall` - launchd, systemd, Task Scheduler
 ├── config.ts      # `zedx config` - repo, conflict strategy, default files, ignored keys
 ├── zed-paths.ts   # Per-platform Zed config paths
-├── *.test.ts      # Vitest unit tests (sync, sync-merge, sync-history, registry-rules, zed-paths)
+├── github.ts      # GitHub CLI helpers (create the sync repo with gh)
+├── *.test.ts      # Vitest unit tests (sync, sync-merge, sync-history, github, registry-rules, zed-paths)
 ├── types/
 │   └── index.ts   # TypeScript interfaces/types
 └── templates/     # EJS templates (copied to dist on build)
