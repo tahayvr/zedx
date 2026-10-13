@@ -7,7 +7,7 @@ import fs from 'fs-extra';
 import color from 'picocolors';
 import simpleGit from 'simple-git';
 
-import { parseJsonc, unsetKeys } from './sync-merge.js';
+import { getAtPath, isPlainObject, listKeyPaths, parseJsonc, parseKeyPath } from './sync-merge.js';
 import { SYNC_FILE_GROUPS, keymapRepoFile } from './sync.js';
 import type { SyncConfig, ConflictStrategy } from './types/index.js';
 import { resolveZedPaths } from './zed-paths.js';
@@ -106,7 +106,7 @@ export async function configRepo(): Promise<void> {
         placeholder: 'https://github.com/you/zed-config.git',
         initialValue: existing?.syncRepo ?? '',
         validate: v => {
-            if (!v.trim()) return 'Repo URL is required';
+            if (!v?.trim()) return 'Repo URL is required';
             if (!v.startsWith('https://') && !v.startsWith('git@')) {
                 return 'Must be a valid HTTPS or SSH git URL';
             }
@@ -203,6 +203,21 @@ export async function configFiles(): Promise<void> {
     );
 }
 
+// zedx manages auto_install_extensions itself (it mirrors installed
+// extensions on every sync), so it can't be kept per-machine.
+const MANAGED_KEY = 'auto_install_extensions';
+
+function isManagedKey(key: string): boolean {
+    return parseKeyPath(key)[0] === MANAGED_KEY;
+}
+
+// Short hint showing a setting's current value next to its key.
+function previewSetting(value: unknown): string {
+    if (isPlainObject(value)) return '{…}';
+    const text = JSON.stringify(value) ?? '';
+    return text.length > 30 ? `${text.slice(0, 27)}...` : text;
+}
+
 // zedx config ignore
 export async function configIgnore(): Promise<void> {
     console.log('');
@@ -221,47 +236,39 @@ export async function configIgnore(): Promise<void> {
         process.exit(1);
     }
 
-    // No placeholder: clack submits the placeholder text when the answer is
-    // left empty, which would make clearing the list impossible.
-    const answer = await p.text({
-        message: `settings.json keys to keep per-machine, comma-separated (e.g. ${color.dim('ui_font_size, terminal.font_size')}). Leave empty for none.`,
-        initialValue: (existing.ignoredSettings ?? []).join(', '),
+    const settingsPath = resolveZedPaths().settings;
+    const settings = (await fs.pathExists(settingsPath))
+        ? parseJsonc(await fs.readFile(settingsPath, 'utf-8'))
+        : undefined;
+    const settingsKeys = listKeyPaths(settings).filter(key => !isManagedKey(key));
+    const current = (existing.ignoredSettings ?? []).filter(key => !isManagedKey(key));
+
+    const selected = await p.autocompleteMultiselect<string>({
+        message:
+            'Which settings.json keys should stay per-machine? (none selected syncs everything)',
+        placeholder: 'Type to search…',
+        options: [
+            ...current
+                .filter(key => !settingsKeys.includes(key))
+                .map(key => ({ value: key, label: key, hint: 'not set in settings.json' })),
+            ...settingsKeys.map(key => ({
+                value: key,
+                label: key,
+                hint: previewSetting(getAtPath(settings, parseKeyPath(key))),
+            })),
+        ],
+        filter: (search, option) => option.value.toLowerCase().includes(search.toLowerCase()),
+        initialValues: current,
+        required: false,
+        maxItems: 12,
     });
 
-    if (p.isCancel(answer)) {
+    if (p.isCancel(selected)) {
         p.cancel('Cancelled.');
         process.exit(0);
     }
 
-    const keys = [
-        ...new Set(
-            String(answer ?? '')
-                .split(',')
-                .map(key => key.trim())
-                .filter(Boolean),
-        ),
-    ];
-
-    if (keys.length > 0) {
-        const settingsPath = resolveZedPaths().settings;
-        const settingsSrc = (await fs.pathExists(settingsPath))
-            ? await fs.readFile(settingsPath, 'utf-8')
-            : '';
-        const unset = unsetKeys(parseJsonc(settingsSrc), keys);
-        if (unset.length > 0) {
-            p.log.warn(
-                `${color.yellow('Not set in your settings.json:')} ${color.cyan(unset.join(', '))}`,
-            );
-            const proceed = await p.confirm({
-                message: 'Save these keys anyway?',
-                initialValue: false,
-            });
-            if (p.isCancel(proceed) || !proceed) {
-                p.cancel('Cancelled. Nothing was saved.');
-                process.exit(0);
-            }
-        }
-    }
+    const keys = selected;
 
     const { ignoredSettings: _previous, ...rest } = existing;
     const updated: PersistedConfig = keys.length > 0 ? { ...rest, ignoredSettings: keys } : rest;

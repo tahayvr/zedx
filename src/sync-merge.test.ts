@@ -9,8 +9,8 @@ import {
     ignoredKeysTransform,
     mergeJson,
     parseJsonc,
+    listKeyPaths,
     parseKeyPath,
-    unsetKeys,
 } from './sync-merge.js';
 
 describe('parseJsonc', () => {
@@ -54,22 +54,20 @@ describe('equalIgnoring', () => {
     });
 });
 
-describe('unsetKeys', () => {
-    const settings = { ui_font_size: 16, terminal: { font_size: 14 } };
-
-    it('returns the keys that are not set, including dotted paths', () => {
+describe('listKeyPaths', () => {
+    it('lists objects and their nested keys as dotted paths, in order', () => {
         expect(
-            unsetKeys(settings, [
-                'ui_font_size',
-                'ui+font_size',
-                'terminal.font_size',
-                'terminal.shell',
-            ]),
-        ).toEqual(['ui+font_size', 'terminal.shell']);
+            listKeyPaths({ ui_font_size: 16, terminal: { font_size: 14, env: {} }, tabs: [1] }),
+        ).toEqual(['ui_font_size', 'terminal', 'terminal.font_size', 'terminal.env', 'tabs']);
     });
 
-    it('treats every key as unset when there are no settings', () => {
-        expect(unsetKeys(undefined, ['ui_font_size'])).toEqual(['ui_font_size']);
+    it('skips keys that contain a dot', () => {
+        expect(listKeyPaths({ file_types: { 'Dockerfile.dev': ['x'] } })).toEqual(['file_types']);
+    });
+
+    it('returns nothing for a value that is not an object', () => {
+        expect(listKeyPaths(undefined)).toEqual([]);
+        expect(listKeyPaths([1, 2])).toEqual([]);
     });
 });
 

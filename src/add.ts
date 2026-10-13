@@ -201,6 +201,7 @@ export async function addLanguage(callerDir: string, languageId: string): Promis
     const languageName = await p.text({
         message: 'Language display name:',
         placeholder: languageId,
+        defaultValue: languageId,
     });
     if (p.isCancel(languageName)) {
         p.cancel('Cancelled.');

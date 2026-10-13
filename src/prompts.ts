@@ -57,6 +57,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
     const name = await p.text({
         message: 'Project name:',
         placeholder: nameDefault,
+        defaultValue: nameDefault,
     });
     if (p.isCancel(name)) {
         p.cancel('Cancelled.');
@@ -71,6 +72,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
     const id = await p.text({
         message: 'Extension ID:',
         placeholder: idDefault,
+        defaultValue: idDefault,
         // An empty answer falls back to the default, so validate that instead.
         validate: (value: string | undefined) => validateExtensionId(value || idDefault),
     });
@@ -84,6 +86,7 @@ export async function promptUser(): Promise<ExtensionOptions> {
     const description = await p.text({
         message: 'Description:',
         placeholder: descriptionDefault,
+        defaultValue: descriptionDefault,
     });
     if (p.isCancel(description)) {
         p.cancel('Cancelled.');
@@ -156,6 +159,7 @@ export async function promptThemeDetails(): Promise<{
     const themeName = await p.text({
         message: 'Theme name:',
         placeholder: 'My Theme',
+        defaultValue: 'My Theme',
     });
     if (p.isCancel(themeName)) {
         p.cancel('Cancelled.');
@@ -189,6 +193,7 @@ export async function promptIconThemeDetails(): Promise<{
     const iconThemeName = await p.text({
         message: 'Icon theme name:',
         placeholder: 'My Icon Theme',
+        defaultValue: 'My Icon Theme',
     });
     if (p.isCancel(iconThemeName)) {
         p.cancel('Cancelled.');
@@ -219,6 +224,7 @@ export async function promptLanguageDetails(): Promise<Partial<LanguageOptions>>
     const languageName = await p.text({
         message: 'Language name:',
         placeholder: 'My Language',
+        defaultValue: 'My Language',
     });
     if (p.isCancel(languageName)) {
         p.cancel('Cancelled.');

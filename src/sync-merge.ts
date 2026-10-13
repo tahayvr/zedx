@@ -53,7 +53,7 @@ export function parseKeyPath(key: string): KeyPath {
         .filter(Boolean);
 }
 
-function getAtPath(root: unknown, keyPath: KeyPath): unknown {
+export function getAtPath(root: unknown, keyPath: KeyPath): unknown {
     let node = root;
     for (const segment of keyPath) {
         if (!isPlainObject(node)) return undefined;
@@ -83,11 +83,15 @@ export function equalIgnoring(a: unknown, b: unknown, ignoredKeys: string[]): bo
     return deepEqual(withoutPaths(a, keyPaths), withoutPaths(b, keyPaths));
 }
 
-// The keys that aren't set in a parsed settings object (likely typos).
-export function unsetKeys(settings: unknown, keys: string[]): string[] {
-    return keys.filter(key => {
-        const keyPath = parseKeyPath(key);
-        return keyPath.length === 0 || getAtPath(settings, keyPath) === undefined;
+// Every key path in a parsed settings object, depth-first and dot-joined
+// ('terminal', 'terminal.font_size', …). Arrays count as values. Keys that
+// contain a dot are skipped, since a dotted path can't address them.
+export function listKeyPaths(settings: unknown, prefix = ''): string[] {
+    if (!isPlainObject(settings)) return [];
+    return Object.entries(settings).flatMap(([key, value]) => {
+        if (key.includes('.')) return [];
+        const keyPath = prefix ? `${prefix}.${key}` : key;
+        return [keyPath, ...listKeyPaths(value, keyPath)];
     });
 }
 

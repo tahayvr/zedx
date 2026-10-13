@@ -65,6 +65,7 @@ export async function addLsp(callerDir: string): Promise<void> {
     const lspName = await p.text({
         message: 'Language server display name:',
         placeholder: lspNameDefault,
+        defaultValue: lspNameDefault,
     });
     if (p.isCancel(lspName)) {
         p.cancel('Cancelled.');
@@ -107,6 +108,7 @@ export async function addLsp(callerDir: string): Promise<void> {
             const custom = await p.text({
                 message: 'Language name (must match name in config.toml):',
                 placeholder: extensionName,
+                defaultValue: extensionName,
             });
             if (p.isCancel(custom)) {
                 p.cancel('Cancelled.');
@@ -120,6 +122,7 @@ export async function addLsp(callerDir: string): Promise<void> {
         const custom = await p.text({
             message: 'Language name (must match name in config.toml):',
             placeholder: extensionName,
+            defaultValue: extensionName,
         });
         if (p.isCancel(custom)) {
             p.cancel('Cancelled.');
@@ -132,6 +135,7 @@ export async function addLsp(callerDir: string): Promise<void> {
     const lspCommand = await p.text({
         message: 'LSP binary command (the executable name or path):',
         placeholder: `${lspId}-server`,
+        defaultValue: `${lspId}-server`,
     });
     if (p.isCancel(lspCommand)) {
         p.cancel('Cancelled.');
