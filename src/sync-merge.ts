@@ -95,6 +95,36 @@ export function listKeyPaths(settings: unknown, prefix = ''): string[] {
     });
 }
 
+export interface PathSetting {
+    key: string;
+    value: string;
+}
+
+// `/…`, `~/…`, `C:\…`, or `\\server\…`
+const ABSOLUTE_PATH = /^(\/|~\/|[A-Za-z]:[\\/]|\\\\)/;
+
+// Skipped by findAbsolutePaths: ssh_connections holds paths on remote hosts,
+// and env values are environment variables (often PATH-style lists), not
+// single local paths.
+function holdsNonLocalPaths(key: string, name: string): boolean {
+    return name === 'env' || (key === '' && name === 'ssh_connections');
+}
+
+// String values in a parsed settings object (arrays included) that look like
+// absolute local file paths, with the dotted key they sit under.
+export function findAbsolutePaths(settings: unknown, key = ''): PathSetting[] {
+    if (typeof settings === 'string') {
+        return key && ABSOLUTE_PATH.test(settings) ? [{ key, value: settings }] : [];
+    }
+    if (Array.isArray(settings)) return settings.flatMap(item => findAbsolutePaths(item, key));
+    if (!isPlainObject(settings)) return [];
+    return Object.entries(settings).flatMap(([name, value]) =>
+        holdsNonLocalPaths(key, name)
+            ? []
+            : findAbsolutePaths(value, key ? `${key}.${name}` : name),
+    );
+}
+
 // Set (or, with `undefined`, remove) one path in a JSONC source, leaving the
 // rest of the text — comments and formatting included — as it was.
 function editJsonc(src: string, keyPath: KeyPath, value: unknown): string {

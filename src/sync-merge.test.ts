@@ -5,6 +5,7 @@ import {
     deepEqual,
     diffLines,
     equalIgnoring,
+    findAbsolutePaths,
     IDENTITY_TRANSFORM,
     ignoredKeysTransform,
     mergeJson,
@@ -68,6 +69,57 @@ describe('listKeyPaths', () => {
     it('returns nothing for a value that is not an object', () => {
         expect(listKeyPaths(undefined)).toEqual([]);
         expect(listKeyPaths([1, 2])).toEqual([]);
+    });
+});
+
+describe('findAbsolutePaths', () => {
+    it('finds Unix, home-relative, Windows, and UNC paths under their dotted keys', () => {
+        expect(
+            findAbsolutePaths({
+                terminal: { shell: { program: '/bin/zsh' } },
+                journal: { path: '~/notes' },
+                node: { path: 'C:\\Program Files\\nodejs\\node.exe' },
+                share: '\\\\server\\zed',
+            }),
+        ).toEqual([
+            { key: 'terminal.shell.program', value: '/bin/zsh' },
+            { key: 'journal.path', value: '~/notes' },
+            { key: 'node.path', value: 'C:\\Program Files\\nodejs\\node.exe' },
+            { key: 'share', value: '\\\\server\\zed' },
+        ]);
+    });
+
+    it('looks inside arrays and reports the key holding the array', () => {
+        expect(findAbsolutePaths({ lsp: { args: ['--stdio', '/opt/lsp/server'] } })).toEqual([
+            { key: 'lsp.args', value: '/opt/lsp/server' },
+        ]);
+    });
+
+    it('skips remote SSH project paths and environment variables', () => {
+        expect(
+            findAbsolutePaths({
+                ssh_connections: [{ host: 'box', projects: [{ paths: ['/home/deploy/app'] }] }],
+                terminal: { env: { PATH: '/opt/homebrew/bin:/usr/bin' } },
+                lsp: {
+                    'rust-analyzer': {
+                        binary: { path: '/usr/local/bin/rust-analyzer', env: { HOME: '/root' } },
+                    },
+                },
+            }),
+        ).toEqual([
+            { key: 'lsp.rust-analyzer.binary.path', value: '/usr/local/bin/rust-analyzer' },
+        ]);
+    });
+
+    it('skips relative paths, globs, URLs, and other values', () => {
+        expect(
+            findAbsolutePaths({
+                theme: 'One Dark',
+                exclude: ['**/.git', 'node_modules'],
+                url: 'https://example.com/x',
+                size: 16,
+            }),
+        ).toEqual([]);
     });
 });
 

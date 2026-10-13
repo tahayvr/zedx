@@ -57,6 +57,7 @@ How a sync decides what to do:
 - **Deleted on one side**: once a file has been synced, deleting it on one machine removes it from the repo and from your other machines on their next sync. A new or reset machine (no Zed config files at all) only pulls; it never deletes.
 - **Changed on both sides**: `settings.json` is merged key by key, so changes to different keys are combined and only keys both sides changed need a decision. For other files zedx shows a diff and asks which version to keep.
 - **Backups**: before a sync overwrites or deletes a local file, it copies it to `~/.config/zedx/backups/`.
+- **Paths from other machines**: if a pulled `settings.json` brings in an absolute path that doesn't exist on this machine (say a Windows path on a Mac), zedx lists it and suggests keeping that key per-machine with `zedx config ignore`.
 
 If the repo can't be reached (offline, bad credentials), the sync stops with git's error and changes nothing.
 

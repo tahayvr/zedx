@@ -13,6 +13,7 @@ import {
     detectIndent,
     diffLines,
     equalIgnoring,
+    findAbsolutePaths,
     IDENTITY_TRANSFORM,
     ignoredKeysTransform,
     isPlainObject,
@@ -20,6 +21,7 @@ import {
     parseJsonc,
     type FileTransform,
     type MergeConflict,
+    type PathSetting,
 } from './sync-merge.js';
 import type { SyncConfig, ConflictStrategy, ZedPaths } from './types/index.js';
 import { resolveZedPaths } from './zed-paths.js';
@@ -969,6 +971,10 @@ export async function runSync(
           }
         : p.spinner();
 
+    // settings.json as it was before and after this sync wrote it locally,
+    // for the missing-path check at the end.
+    let settingsWrite: { before: string | null; after: string } | undefined;
+
     await withTempDir(async tmp => {
         // 1. Clone the remote repo
         const git = simpleGit(tmp);
@@ -1024,6 +1030,12 @@ export async function runSync(
             anyChanges = true;
         };
         const writeLocal = async (file: SyncFileEntry, content: string, backup: boolean) => {
+            if (file.key === 'settings') {
+                settingsWrite = {
+                    before: settingsWrite?.before ?? (await readIfExists(file.localPath)),
+                    after: content,
+                };
+            }
             if (backup) await backupLocal(file);
             await fs.outputFile(file.localPath, content, 'utf-8');
         };
@@ -1349,5 +1361,47 @@ export async function runSync(
     // 5. Save last sync timestamp
     await writeSyncConfig({ ...config, lastSync: new Date().toISOString() });
 
+    if (!silent && settingsWrite) {
+        await warnMissingPaths(
+            settingsWrite.before,
+            settingsWrite.after,
+            config.ignoredSettings ?? [],
+        );
+    }
+
     if (!silent) p.outro(`${color.green('✓')} Sync complete.`);
+}
+
+function expandHome(filePath: string): string {
+    return filePath.startsWith('~/') ? path.join(os.homedir(), filePath.slice(2)) : filePath;
+}
+
+// After a sync brings settings.json in, point out absolute paths that came
+// with it but don't exist here — usually a path from another OS or machine.
+// Paths the local file already had, and ignored keys, are left alone.
+async function warnMissingPaths(
+    before: string | null,
+    after: string,
+    ignoredKeys: string[],
+): Promise<void> {
+    const known = new Set(
+        findAbsolutePaths(before === null ? undefined : parseJsonc(before)).map(
+            s => `${s.key}\0${s.value}`,
+        ),
+    );
+    const isIgnored = (key: string) =>
+        ignoredKeys.some(ignored => key === ignored || key.startsWith(`${ignored}.`));
+
+    const missing: PathSetting[] = [];
+    for (const setting of findAbsolutePaths(parseJsonc(after))) {
+        if (known.has(`${setting.key}\0${setting.value}`) || isIgnored(setting.key)) continue;
+        if (!(await fs.pathExists(expandHome(setting.value)))) missing.push(setting);
+    }
+    if (missing.length === 0) return;
+
+    p.log.warn(
+        `${color.yellow("These settings point to paths that don't exist on this machine:")}\n` +
+            missing.map(s => `  ${color.cyan(s.key)}: ${s.value}`).join('\n') +
+            `\n\n${color.dim('To give this machine its own value, run')} ${color.cyan('zedx config ignore')} ${color.dim('and pick the key.')}`,
+    );
 }
