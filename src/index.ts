@@ -30,6 +30,7 @@ import {
 } from './prompts.js';
 import { publishWorkflow, runPublish } from './publish.js';
 import { addLsp } from './snippet.js';
+import { syncHistory, syncRestore } from './sync-history.js';
 import { syncInit, runSync, syncStatus, syncSelect } from './sync.js';
 import type { ConflictStrategy } from './types/index.js';
 
@@ -103,6 +104,8 @@ function printWelcome(): void {
         ['zedx sync init', 'Link a git repo as the sync target'],
         ['zedx sync select', 'Choose which files to sync interactively'],
         ['zedx sync status', 'Show sync state between local and remote'],
+        ['zedx sync history [file]', 'Show recent syncs and what they changed'],
+        ['zedx sync restore [file]', 'Bring back an earlier version of a file'],
         ['zedx sync install', 'Install the OS daemon for auto-sync'],
         ['zedx sync uninstall', 'Remove the auto-sync daemon'],
         ['zedx config', 'Configure zedx settings'],
@@ -309,6 +312,26 @@ async function main() {
         .description('Interactively choose which files to sync')
         .action(async () => {
             await syncSelect();
+        });
+
+    syncCmd
+        .command('history [file]')
+        .description('Show recent syncs, or the changes to one file (e.g. settings.json)')
+        .option('-n, --limit <count>', 'How many syncs to show', '20')
+        .action(async (file: string | undefined, opts: { limit: string }) => {
+            const limit = Number.parseInt(opts.limit, 10);
+            if (!Number.isInteger(limit) || limit < 1) {
+                p.log.error(color.red('--limit must be a positive number.'));
+                process.exit(1);
+            }
+            await syncHistory(file, limit);
+        });
+
+    syncCmd
+        .command('restore [file]')
+        .description('Restore an earlier version of a synced file from history or a local backup')
+        .action(async (file: string | undefined) => {
+            await syncRestore(file);
         });
 
     syncCmd

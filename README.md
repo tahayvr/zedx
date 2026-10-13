@@ -66,7 +66,18 @@ If the repo can't be reached (offline, bad credentials), the sync stops with git
 zedx sync status
 ```
 
-**4. Auto-sync with an OS daemon**
+**4. Look back and restore**
+
+```bash
+zedx sync history                 # Recent syncs: when, from which machine, which files
+zedx sync history settings.json   # Only the syncs that changed settings.json
+zedx sync restore                 # Pick a file and an earlier version to bring back
+zedx sync restore keymap.json     # Skip straight to choosing a version of keymap.json
+```
+
+Every sync is a commit in your repo, so `zedx sync restore` can bring back any earlier version of a synced file, or the local backup taken before a sync last replaced it. It shows a diff and asks before writing, backs up the current file first, and leaves ignored `settings.json` keys as they are. The restore only changes this machine; run `zedx sync` to send it to the others.
+
+**5. Auto-sync with an OS daemon**
 
 ```bash
 zedx sync install    # Install and enable the daemon

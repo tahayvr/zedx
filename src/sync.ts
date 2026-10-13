@@ -36,7 +36,7 @@ const ZEDX_BASE_DIR = path.join(ZEDX_CONFIG_DIR, 'base');
 const ZEDX_BASE_SOURCE_PATH = path.join(ZEDX_BASE_DIR, '.source');
 // Local files are copied here before a sync overwrites or deletes them. Kept
 // outside Zed's config dir because Zed loads every file in themes/.
-const ZEDX_BACKUP_DIR = path.join(ZEDX_CONFIG_DIR, 'backups');
+export const ZEDX_BACKUP_DIR = path.join(ZEDX_CONFIG_DIR, 'backups');
 // How many changed lines of a whole-file conflict to preview before asking.
 const DIFF_PREVIEW_LINES = 40;
 
@@ -52,7 +52,7 @@ async function readSyncConfig(): Promise<PersistedConfig | null> {
     return fs.readJson(ZEDX_CONFIG_PATH) as Promise<PersistedConfig>;
 }
 
-async function requireSyncConfig(): Promise<PersistedConfig> {
+export async function requireSyncConfig(): Promise<PersistedConfig> {
     const config = await readSyncConfig();
     if (!config) {
         p.log.error(
@@ -71,7 +71,7 @@ async function writeSyncConfig(config: PersistedConfig): Promise<void> {
 }
 
 // Temp dir helper
-async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+export async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'zedx-sync-'));
     try {
         return await fn(tmp);
@@ -412,7 +412,7 @@ function gitErrorMessage(err: unknown): string {
 // branch yet (an empty repo, or the first push to a new branch) and throws on
 // any other failure, so a network or auth problem is never mistaken for an
 // empty remote.
-async function cloneRemote(config: SyncConfig, dir: string): Promise<boolean> {
+export async function cloneRemote(config: SyncConfig, dir: string): Promise<boolean> {
     let heads: string;
     try {
         heads = await simpleGit().listRemote([
@@ -562,7 +562,11 @@ function previewValue(value: unknown): string {
     return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
-function printDiff(local: string, remote: string): void {
+export function printDiff(
+    local: string,
+    remote: string,
+    labels: { local: string; remote: string } = { local: 'local', remote: 'remote' },
+): void {
     const diff = diffLines(local, remote);
     if (!diff) {
         p.log.message(color.dim('(too many differences to preview)'));
@@ -570,12 +574,13 @@ function printDiff(local: string, remote: string): void {
     }
 
     const changed = diff.filter(line => line.type !== 'same');
+    const width = Math.max(labels.local.length, labels.remote.length);
     const lines = changed
         .slice(0, DIFF_PREVIEW_LINES)
         .map(line =>
             line.type === 'local'
-                ? color.green(`local  │ ${line.text}`)
-                : color.cyan(`remote │ ${line.text}`),
+                ? color.green(`${labels.local.padEnd(width)} │ ${line.text}`)
+                : color.cyan(`${labels.remote.padEnd(width)} │ ${line.text}`),
         );
     if (changed.length > DIFF_PREVIEW_LINES) {
         lines.push(color.dim(`… ${changed.length - DIFF_PREVIEW_LINES} more changed lines`));
@@ -1226,7 +1231,7 @@ export async function runSync(
                     }
 
                     const timestamp = new Date().toISOString();
-                    await git.commit(`sync: ${timestamp}`);
+                    await git.commit(`sync: ${timestamp} from ${os.hostname()}`);
                     try {
                         await git.push('origin', config.branch, ['--set-upstream']);
                     } catch {

@@ -103,10 +103,11 @@ src/
 ├── install.ts     # `zedx install` - install as a Zed dev extension
 ├── sync.ts        # `zedx sync` - init, status, select, and the sync run
 ├── sync-merge.ts  # Pure helpers for sync: JSON merge, ignored keys, line diff
+├── sync-history.ts # `zedx sync history/restore` - browse and restore past versions
 ├── daemon.ts      # `zedx sync install/uninstall` - launchd, systemd, Task Scheduler
 ├── config.ts      # `zedx config` - repo, conflict strategy, default files, ignored keys
 ├── zed-paths.ts   # Per-platform Zed config paths
-├── *.test.ts      # Vitest unit tests (sync, sync-merge, registry-rules, zed-paths)
+├── *.test.ts      # Vitest unit tests (sync, sync-merge, sync-history, registry-rules, zed-paths)
 ├── types/
 │   └── index.ts   # TypeScript interfaces/types
 └── templates/     # EJS templates (copied to dist on build)
