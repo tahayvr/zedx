@@ -6,8 +6,10 @@ import fs from 'fs-extra';
 import color from 'picocolors';
 import simpleGit from 'simple-git';
 
+import { parseJsonc, unsetKeys } from './sync-merge.js';
 import { SYNC_FILE_GROUPS } from './sync.js';
 import type { SyncConfig, ConflictStrategy } from './types/index.js';
+import { resolveZedPaths } from './zed-paths.js';
 
 const ZEDX_CONFIG_DIR = path.join(os.homedir(), '.config', 'zedx');
 const ZEDX_CONFIG_PATH = path.join(ZEDX_CONFIG_DIR, 'config.json');
@@ -218,9 +220,10 @@ export async function configIgnore(): Promise<void> {
         process.exit(1);
     }
 
+    // No placeholder: clack submits the placeholder text when the answer is
+    // left empty, which would make clearing the list impossible.
     const answer = await p.text({
-        message: 'settings.json keys to keep per-machine (comma-separated, empty for none)',
-        placeholder: 'ui_font_size, buffer_font_size, terminal.font_size',
+        message: `settings.json keys to keep per-machine, comma-separated (e.g. ${color.dim('ui_font_size, terminal.font_size')}). Leave empty for none.`,
         initialValue: (existing.ignoredSettings ?? []).join(', '),
     });
 
@@ -237,6 +240,27 @@ export async function configIgnore(): Promise<void> {
                 .filter(Boolean),
         ),
     ];
+
+    if (keys.length > 0) {
+        const settingsPath = resolveZedPaths().settings;
+        const settingsSrc = (await fs.pathExists(settingsPath))
+            ? await fs.readFile(settingsPath, 'utf-8')
+            : '';
+        const unset = unsetKeys(parseJsonc(settingsSrc), keys);
+        if (unset.length > 0) {
+            p.log.warn(
+                `${color.yellow('Not set in your settings.json:')} ${color.cyan(unset.join(', '))}`,
+            );
+            const proceed = await p.confirm({
+                message: 'Save these keys anyway?',
+                initialValue: false,
+            });
+            if (p.isCancel(proceed) || !proceed) {
+                p.cancel('Cancelled. Nothing was saved.');
+                process.exit(0);
+            }
+        }
+    }
 
     const { ignoredSettings: _previous, ...rest } = existing;
     const updated: PersistedConfig = keys.length > 0 ? { ...rest, ignoredSettings: keys } : rest;

@@ -83,6 +83,14 @@ export function equalIgnoring(a: unknown, b: unknown, ignoredKeys: string[]): bo
     return deepEqual(withoutPaths(a, keyPaths), withoutPaths(b, keyPaths));
 }
 
+// The keys that aren't set in a parsed settings object (likely typos).
+export function unsetKeys(settings: unknown, keys: string[]): string[] {
+    return keys.filter(key => {
+        const keyPath = parseKeyPath(key);
+        return keyPath.length === 0 || getAtPath(settings, keyPath) === undefined;
+    });
+}
+
 // Set (or, with `undefined`, remove) one path in a JSONC source, leaving the
 // rest of the text — comments and formatting included — as it was.
 function editJsonc(src: string, keyPath: KeyPath, value: unknown): string {

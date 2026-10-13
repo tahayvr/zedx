@@ -10,6 +10,7 @@ import {
     mergeJson,
     parseJsonc,
     parseKeyPath,
+    unsetKeys,
 } from './sync-merge.js';
 
 describe('parseJsonc', () => {
@@ -50,6 +51,25 @@ describe('equalIgnoring', () => {
 
         expect(equalIgnoring(a, b, ['ui_font_size', 'terminal.font_size'])).toBe(true);
         expect(equalIgnoring(a, b, ['ui_font_size'])).toBe(false);
+    });
+});
+
+describe('unsetKeys', () => {
+    const settings = { ui_font_size: 16, terminal: { font_size: 14 } };
+
+    it('returns the keys that are not set, including dotted paths', () => {
+        expect(
+            unsetKeys(settings, [
+                'ui_font_size',
+                'ui+font_size',
+                'terminal.font_size',
+                'terminal.shell',
+            ]),
+        ).toEqual(['ui+font_size', 'terminal.shell']);
+    });
+
+    it('treats every key as unset when there are no settings', () => {
+        expect(unsetKeys(undefined, ['ui_font_size'])).toEqual(['ui_font_size']);
     });
 });
 
