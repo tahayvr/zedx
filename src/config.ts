@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 
@@ -274,7 +275,44 @@ export async function configIgnore(): Promise<void> {
     );
 }
 
-type ConfigOption = 'repo' | 'conflict' | 'files' | 'ignore';
+// Launch Zed on a file, trying the `zed` CLI first and then the
+// platform-specific fallbacks. Returns false when none could be started.
+function openInZed(filePath: string): boolean {
+    const candidates: [string, string[]][] = [['zed', [filePath]]];
+    if (process.platform === 'darwin') candidates.push(['open', ['-a', 'Zed', filePath]]);
+    if (process.platform === 'linux') candidates.push(['zeditor', [filePath]]);
+
+    return candidates.some(([cmd, args]) => {
+        const result = spawnSync(cmd, args, { stdio: 'ignore' });
+        return !result.error && result.status === 0;
+    });
+}
+
+// zedx config open
+export async function configOpen(): Promise<void> {
+    if (!(await fs.pathExists(ZEDX_CONFIG_PATH))) {
+        p.log.error(
+            color.red('No sync config found. Run ') +
+                color.cyan('zedx sync init') +
+                color.red(' first.'),
+        );
+        process.exit(1);
+    }
+
+    if (!openInZed(ZEDX_CONFIG_PATH)) {
+        p.log.error(
+            color.red('Could not open Zed. Make sure the ') +
+                color.cyan('zed') +
+                color.red(' CLI is installed (Zed → Install CLI).'),
+        );
+        p.log.info(`Config file: ${color.dim(ZEDX_CONFIG_PATH)}`);
+        process.exit(1);
+    }
+
+    p.log.success(`Opened ${color.dim(ZEDX_CONFIG_PATH)} in Zed.`);
+}
+
+type ConfigOption = 'repo' | 'conflict' | 'files' | 'ignore' | 'open';
 
 // zedx config (interactive menu)
 export async function runConfig(direct?: ConfigOption): Promise<void> {
@@ -295,6 +333,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
 
     if (direct === 'ignore') {
         await configIgnore();
+        return;
+    }
+
+    if (direct === 'open') {
+        await configOpen();
         return;
     }
 
@@ -324,6 +367,11 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
                 label: 'Per-machine settings',
                 hint: 'settings.json keys that are never synced',
             },
+            {
+                value: 'open',
+                label: 'Open config file',
+                hint: 'Edit ~/.config/zedx/config.json in Zed',
+            },
         ],
     });
 
@@ -340,5 +388,7 @@ export async function runConfig(direct?: ConfigOption): Promise<void> {
         await configFiles();
     } else if (option === 'ignore') {
         await configIgnore();
+    } else if (option === 'open') {
+        await configOpen();
     }
 }

@@ -152,6 +152,7 @@ zedx config conflict --local      # Local always wins, no prompt
 zedx config conflict --remote     # Remote always wins, no prompt
 zedx config files                 # Choose which files zedx sync touches by default
 zedx config ignore                # Keep some settings.json keys per-machine
+zedx config open                  # Open ~/.config/zedx/config.json in Zed
 ```
 
 `zedx sync select` still exists for one-off overrides — `zedx config files` sets the persistent default so every plain `zedx sync` only touches the files you chose.
