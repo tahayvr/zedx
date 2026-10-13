@@ -5,10 +5,16 @@
 <p align="center"> CLI toolkit for the Zed Editor</p>
 
 <p align="center">
-<a href="https://github.com/tahayvr/zedx/actions/workflows/ci.yml"><img src="https://github.com/tahayvr/zedx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="#installation">Installation</a> ·
+<a href="#sync">Sync</a> ·
+<a href="#scaffolding-an-extension">Extensions</a> ·
+<a href="#validation">Validation</a> ·
+<a href="#publishing">Publishing</a> ·
+<a href="#configuration">Configuration</a> ·
+<a href="#license">License</a>
 </p>
 
-![screenshot](./assets/screenshot1.png)
+![screenshot](./assets/screenshot2.png)
 
 ## Installation
 
