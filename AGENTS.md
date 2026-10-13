@@ -92,26 +92,36 @@ if (p.isCancel(value)) {
 
 ```
 src/
-├── index.ts       # CLI entry point (commander), welcome screen, version bumping
-├── prompts.ts     # User input for `zedx create` via @clack/prompts
-├── generator.ts   # `zedx create` - file generation from EJS templates
-├── add.ts         # `zedx add` - theme, icon theme, language
-├── snippet.ts     # `zedx snippet add lsp` - language server wiring
-├── check.ts       # `zedx check` - extension validation and publish gate
-├── publish.ts     # `zedx publish` - registry submission steps, release workflow
-├── registry-rules.ts # Zed extension registry rules (ID, version, license)
-├── install.ts     # `zedx install` - install as a Zed dev extension
-├── sync.ts        # `zedx sync` - init, status, select, and the sync run
-├── sync-merge.ts  # Pure helpers for sync: JSON merge, ignored keys, line diff
-├── sync-history.ts # `zedx sync history/restore` - browse and restore past versions
-├── daemon.ts      # `zedx sync install/uninstall` - launchd, systemd, Task Scheduler
-├── config.ts      # `zedx config` - repo, conflict strategy, default files, ignored keys
-├── zed-paths.ts   # Per-platform Zed config paths
-├── github.ts      # GitHub CLI helpers (create the sync repo with gh)
-├── *.test.ts      # Vitest unit tests (sync, sync-merge, sync-history, github, registry-rules, zed-paths)
+├── index.ts               # CLI entry point (commander), welcome screen, version bumping
+├── prompts.ts             # User input for `zedx create` via @clack/prompts
+├── generator.ts           # `zedx create` - file generation from EJS templates
+├── add.ts                 # `zedx add` - theme, icon theme, language
+├── snippet.ts             # `zedx snippet add lsp` - language server wiring
+├── check.ts               # `zedx check` - extension validation and publish gate
+├── publish.ts             # `zedx publish` - registry submission steps, release workflow
+├── registry-rules.ts      # Zed extension registry rules (ID, version, license)
+├── install.ts             # `zedx install` - install as a Zed dev extension
+├── sync.ts                # `zedx sync` - init (incl. gh repo creation), status, select, the sync run,
+│                          #   per-platform keymap paths, missing-path warnings
+├── sync-merge.ts          # Pure helpers for sync: JSON merge, ignored keys, key paths,
+│                          #   absolute-path detection, line diff
+├── sync-history.ts        # `zedx sync history/restore` - browse and restore past versions
+├── daemon.ts              # `zedx sync install/uninstall` - launchd, systemd, Task Scheduler
+├── config.ts              # `zedx config` - repo, conflict strategy, files, ignored keys,
+│                          #   keymap mode, open the config file in Zed
+├── github.ts              # GitHub CLI helpers (detect gh, create the sync repo)
+├── zed-paths.ts           # Per-platform Zed config paths
+├── *.test.ts              # Vitest unit tests (sync, sync-merge, sync-history, github,
+│                          #   registry-rules, zed-paths)
 ├── types/
-│   └── index.ts   # TypeScript interfaces/types
-└── templates/     # EJS templates (copied to dist on build)
+│   └── index.ts           # TypeScript interfaces/types
+└── templates/             # EJS templates (copied to dist on build)
+    ├── base/              # extension.toml, README, licenses
+    ├── theme/             # theme.json
+    ├── icon-theme/        # icon-theme.json and icons
+    ├── language/          # config.toml and tree-sitter queries (*.scm)
+    ├── lsp/               # Cargo.toml and lib.rs for a language server extension
+    └── publish/           # release.yml workflow for registry update PRs
 ```
 
 ### Dependencies
