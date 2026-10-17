@@ -1,6 +1,6 @@
 {
     "name": "zedx",
-    "version": "0.17.1",
+    "version": "0.17.2",
     "description": "The CLI toolkit for Zed Editor.",
     "keywords": [
         "boilerplate",
