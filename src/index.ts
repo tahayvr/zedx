@@ -97,7 +97,9 @@ function printWelcome(): void {
     `.trim();
 
     console.log('\n' + color.cyan(color.bold(ascii)) + '\n');
-    console.log(color.bold('  The CLI toolkit for Zed Editor') + '\n');
+    console.log(
+        `${color.bold('  The CLI toolkit for Zed Editor')} ${color.dim(`· v${version}`)}\n`,
+    );
 
     const syncCommands: [string, string][] = [
         ['zedx sync', 'Sync Zed settings via a git repo'],
