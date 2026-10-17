@@ -63,7 +63,10 @@ jobs:
         name: Update Homebrew tap
         needs: publish
         runs-on: ubuntu-latest
+        timeout-minutes: 20
         permissions: {}
+        # The environment's wait timer gives npm time to process the release
+        environment: homebrew
         steps:
             - name: Checkout tap
               uses: actions/checkout@v6
@@ -76,11 +79,12 @@ jobs:
                   VERSION="${GITHUB_REF_NAME#v}"
                   URL="https://registry.npmjs.org/zedx/-/zedx-$VERSION.tgz"
 
-                  # The tarball can take a moment to appear after publishing
-                  for i in 1 2 3 4 5 6; do
+                  # Keep polling in case npm is slower than the initial wait
+                  for i in $(seq 1 30); do
                       curl -sfL "$URL" -o zedx.tgz && break
-                      echo "Tarball not available yet, retrying in 10s"
-                      sleep 10
+                      rm -f zedx.tgz
+                      echo "Tarball not available yet ($i/30), retrying in 30s"
+                      sleep 30
                   done
                   [ -f zedx.tgz ] || { echo "Could not download $URL"; exit 1; }
 
