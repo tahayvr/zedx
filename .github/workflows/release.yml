@@ -59,6 +59,52 @@ jobs:
             - name: Publish
               run: npm publish
 
+    homebrew:
+        name: Update Homebrew tap
+        needs: publish
+        runs-on: ubuntu-latest
+        permissions: {}
+        steps:
+            - name: Checkout tap
+              uses: actions/checkout@v6
+              with:
+                  repository: tahayvr/homebrew-tap
+                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+            - name: Update formula
+              run: |
+                  VERSION="${GITHUB_REF_NAME#v}"
+                  URL="https://registry.npmjs.org/zedx/-/zedx-$VERSION.tgz"
+
+                  # The tarball can take a moment to appear after publishing
+                  for i in 1 2 3 4 5 6; do
+                      curl -sfL "$URL" -o zedx.tgz && break
+                      echo "Tarball not available yet, retrying in 10s"
+                      sleep 10
+                  done
+                  [ -f zedx.tgz ] || { echo "Could not download $URL"; exit 1; }
+
+                  SHA=$(sha256sum zedx.tgz | awk '{print $1}')
+                  rm zedx.tgz
+
+                  sed -i "s/version '[^']*'/version '$VERSION'/" zedx.rb
+                  sed -i "s|url '[^']*'|url '$URL'|" zedx.rb
+                  sed -i "s/sha256 '[^']*'/sha256 '$SHA'/" zedx.rb
+
+                  echo "Updated zedx.rb to $VERSION ($SHA)"
+
+            - name: Commit and push
+              run: |
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  git add zedx.rb
+                  if git diff --cached --quiet; then
+                      echo "Formula already up to date"
+                      exit 0
+                  fi
+                  git commit -m "zedx ${GITHUB_REF_NAME#v}"
+                  git push
+
     release:
         name: Create release
         needs: publish
