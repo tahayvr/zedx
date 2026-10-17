@@ -10,8 +10,58 @@ permissions:
     pull-requests: read
 
 jobs:
+    publish:
+        name: Publish to npm
+        runs-on: ubuntu-latest
+        environment: npm
+        permissions:
+            contents: read
+            id-token: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v6
+              with:
+                  version: 11
+
+            - name: Setup Node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: '24'
+                  cache: pnpm
+                  registry-url: 'https://registry.npmjs.org'
+
+            - name: Check tag matches package.json version
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+                      echo "Tag $GITHUB_REF_NAME does not match package.json version $VERSION"
+                      exit 1
+                  fi
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Lint
+              run: pnpm lint
+
+            - name: Check formatting
+              run: pnpm fmt:check
+
+            - name: Test
+              run: pnpm test
+
+            - name: Build
+              run: pnpm build
+
+            - name: Publish
+              run: npm publish
+
     release:
         name: Create release
+        needs: publish
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
